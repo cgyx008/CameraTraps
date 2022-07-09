@@ -40,6 +40,7 @@ import itertools
 
 from datetime import datetime
 from functools import partial
+from pathlib import Path
 
 import humanfriendly
 from tqdm import tqdm
@@ -103,7 +104,7 @@ def process_image(im_file, tf_detector, confidence_threshold):
     - result: dict representing detections on one image
         see the 'images' key in https://github.com/microsoft/CameraTraps/tree/master/api/batch_processing#batch-processing-api-output-format
     """
-    print('Processing image {}'.format(im_file))
+    # print('Processing image {}'.format(im_file))
     try:
         image = viz_utils.load_image(im_file)
     except Exception as e:
@@ -381,5 +382,34 @@ def main():
     print('Done!')
 
 
+def process_inat_data():
+    pb_path = r'D:/Projects/CameraTraps/weights/v4/md_v4.1.0.pb'
+    # img_root = Path(r'F:\data\AD\iNat')
+    # root = Path(r'G:\Data\AD\video_20220512')
+    root = Path(r'G:\Data\AD\wcs\wcs-unzipped')
+
+    img_roots = sorted(list(
+        {img_path.parent for img_path in root.glob('**/*.jpg')}))
+    for i, img_root in enumerate(img_roots):
+        json_path = img_root.parent / f'{img_root.stem}_mgd.json'
+        cla = [pb_path, str(img_root), str(json_path)]
+
+        # command line arguments
+        # cla = [
+        #     r'D:/Projects/CameraTraps/weights/v4/md_v4.1.0.pb',
+        #     r'F:/data/AD/iNat/Antilopinae/Antilope_cervicapra/images',
+        #     r'F:/data/AD/iNat/Antilopinae/Antilope_cervicapra/mgd.json'
+        # ]
+
+        sys.argv = sys.argv[:1]
+        sys.argv.extend(cla)
+
+        print(f'Processing {i + 1} / {len(img_roots)}:')
+        print(f'img_root: {img_root}')
+        main()
+    assert 1
+
+
 if __name__ == '__main__':
-    main()
+    # main()
+    process_inat_data()
