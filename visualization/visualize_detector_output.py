@@ -11,9 +11,10 @@ import json
 import os
 import random
 import sys
+from pathlib import Path
 from typing import Any, List, Optional
 
-from tqdm import tqdm
+from tqdm import tqdm, trange
 
 from data_management.annotations.annotation_constants import (
     detector_bbox_category_id_to_name)  # here id is int
@@ -227,5 +228,22 @@ def main() -> None:
         render_detections_only=args.detections_only)
 
 
+def vis_inat():
+    src = Path(r'F:\data\AD\iNat')
+    dst = Path(r'G:\Data\AD\iNat\mgd_ge_0.999')
+
+    json_paths = sorted(list(src.glob('**/mgd.json')))
+    src_dirs = [p.parent / 'images' for p in json_paths]
+    dst_dirs = [dst / p.parts[-3] / p.parts[-2] for p in json_paths]
+
+    for i in trange(len(json_paths)):
+        cmd = [str(json_paths[i]), str(dst_dirs[i]),
+               '-i', str(src_dirs[i]), '-c', '0.9989', '-w', '-1']
+        sys.argv = sys.argv[:1]
+        sys.argv.extend(cmd)
+        main()
+    assert 1
+
+
 if __name__ == '__main__':
-    main()
+    vis_inat()
