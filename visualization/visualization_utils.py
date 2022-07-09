@@ -27,6 +27,9 @@ IMAGE_ROTATIONS = {
     8: 90
 }
 
+TEXTALIGN_LEFT = 0
+TEXTALIGN_RIGHT = 1
+
 # convert category ID from int to str
 DEFAULT_DETECTOR_LABEL_MAP = {
     str(k): v for k, v in detector_bbox_category_id_to_name.items()
@@ -43,6 +46,8 @@ error_names_for_retry = ['ConnectionError']
 def open_image(input_file: Union[str, BytesIO]) -> Image:
     """
     Opens an image in binary format using PIL.Image and converts to RGB mode.
+    
+    Supports local files or URLs.
 
     This operation is lazy; image will not be actually loaded until the first
     operation that needs to load it (for example, resizing), so file opening
@@ -249,11 +254,13 @@ def crop_image(detections, image, confidence_threshold=0.8, expansion=0):
 
 
 def render_detection_bounding_boxes(detections, image,
-                                    label_map={},
-                                    classification_label_map={},
+                                    label_map={}, 
+                                    classification_label_map={}, 
                                     confidence_threshold=0.8, thickness=4, expansion=0,
                                     classification_confidence_threshold=0.3,
-                                    max_classifications=3):
+                                    max_classifications=3,
+                                    colormap=COLORS,
+                                    textalign=TEXTALIGN_LEFT):
     """
     Renders bounding boxes, label, and confidence on an image if confidence is above the threshold.
 
@@ -282,7 +289,7 @@ def render_detection_bounding_boxes(detections, image,
 
             (0, 0) is the upper-left.  Coordinates are normalized.
 
-            Supports classification results, if *detections* have the format
+            Supports classification results, if *detections* has the format
             [
                 {
                     "category": "2",
@@ -301,14 +308,15 @@ def render_detection_bounding_boxes(detections, image,
                 }
             ]
 
-        image: PIL.Image object, output of generate_detections.
+        image: PIL.Image object
 
         label_map: optional, mapping the numerical label to a string name. The type of the numerical label
             (default string) needs to be consistent with the keys in label_map; no casting is carried out.
+            If this is None, no labels are shown.
 
         classification_label_map: optional, mapping of the string class labels to the actual class names.
             The type of the numerical label (default string) needs to be consistent with the keys in
-            label_map; no casting is carried out.
+            label_map; no casting is carried out.  If this is None, no classification labels are shown.
 
         confidence_threshold: optional, threshold above which the bounding box is rendered.
         thickness: line thickness in pixels. Default value is 4.
@@ -331,8 +339,12 @@ def render_detection_bounding_boxes(detections, image,
             x1, y1, w_box, h_box = detection['bbox']
             display_boxes.append([y1, x1, y1 + h_box, x1 + w_box])
             clss = detection['category']
-            label = label_map[clss] if clss in label_map else clss
-            displayed_label = ['{}: {}%'.format(label, round(100 * score))]
+            
+            if label_map:
+                label = label_map[clss] if clss in label_map else clss
+                displayed_label = ['{}: {}%'.format(label, round(100 * score))]
+            else:
+                displayed_label = ''
 
             if 'classifications' in detection:
 
@@ -342,28 +354,36 @@ def render_detection_bounding_boxes(detections, image,
                 classifications = detection['classifications']
                 if len(classifications) > max_classifications:
                     classifications = classifications[0:max_classifications]
+                    
                 for classification in classifications:
+                    
                     p = classification[1]
                     if p < classification_confidence_threshold:
                         continue
                     class_key = classification[0]
-                    if class_key in classification_label_map:
-                        class_name = classification_label_map[class_key]
-                    else:
-                        class_name = class_key
-                    displayed_label += ['{}: {:5.1%}'.format(class_name.lower(), classification[1])]
+                    if classification_label_map:
+                        if class_key in classification_label_map:
+                            class_name = classification_label_map[class_key]
+                        else:
+                            class_name = class_key
+                        displayed_label += ['{}: {:5.1%}'.format(class_name.lower(), classification[1])]
+                    
+                # ...for each classification
 
-            # ...if we have detection results
+            # ...if we have classification results
+                        
             display_strs.append(displayed_label)
             classes.append(clss)
 
         # ...if the confidence of this detection is above threshold
 
     # ...for each detection
+    
     display_boxes = np.array(display_boxes)
 
     draw_bounding_boxes_on_image(image, display_boxes, classes,
-                                 display_strs=display_strs, thickness=thickness, expansion=expansion)
+                                 display_strs=display_strs, thickness=thickness, 
+                                 expansion=expansion, colormap=colormap, textalign=textalign)
 
 
 def draw_bounding_boxes_on_image(image,
@@ -371,7 +391,9 @@ def draw_bounding_boxes_on_image(image,
                                  classes,
                                  thickness=4,
                                  expansion=0,
-                                 display_strs=()):
+                                 display_strs=None,
+                                 colormap=COLORS,
+                                 textalign=TEXTALIGN_LEFT):
     """
     Draws bounding boxes on an image.
 
@@ -403,7 +425,9 @@ def draw_bounding_boxes_on_image(image,
                                        boxes[i, 0], boxes[i, 1], boxes[i, 2], boxes[i, 3],
                                        classes[i],
                                        thickness=thickness, expansion=expansion,
-                                       display_str_list=display_str_list)
+                                       display_str_list=display_str_list,
+                                       colormap=colormap,
+                                       textalign=textalign)
 
 
 def draw_bounding_box_on_image(image,
@@ -416,7 +440,9 @@ def draw_bounding_box_on_image(image,
                                expansion=0,
                                display_str_list=(),
                                use_normalized_coordinates=True,
-                               label_font_size=16):
+                               label_font_size=16,
+                               colormap=COLORS,
+                               textalign=TEXTALIGN_LEFT):
     """
     Adds a bounding box to an image.
 
@@ -445,9 +471,9 @@ def draw_bounding_box_on_image(image,
     label_font_size: font size to attempt to load arial.ttf with
     """
     if clss is None:
-        color = COLORS[1]
+        color = colormap[1]
     else:
-        color = COLORS[int(clss) % len(COLORS)]
+        color = colormap[int(clss) % len(colormap)]
 
     draw = ImageDraw.Draw(image)
     im_width, im_height = image.size
@@ -458,6 +484,7 @@ def draw_bounding_box_on_image(image,
         (left, right, top, bottom) = (xmin, xmax, ymin, ymax)
 
     if expansion > 0:
+        
         left -= expansion
         right += expansion
         top -= expansion
@@ -479,6 +506,8 @@ def draw_bounding_box_on_image(image,
         left = min(left,im_width-1); right = min(right,im_width-1)
         top = min(top,im_height-1); bottom = min(bottom,im_height-1)
 
+    # ...if we need to expand boxes
+    
     draw.line([(left, top), (left, bottom), (right, bottom),
                (right, top), (left, top)], width=thickness, fill=color)
 
@@ -502,16 +531,27 @@ def draw_bounding_box_on_image(image,
 
     # Reverse list and print from bottom to top.
     for display_str in display_str_list[::-1]:
+        
+        # Skip empty strings
+        if len(display_str) == 0:
+            continue
+        
         text_width, text_height = font.getsize(display_str)
+        
+        text_left = left
+        
+        if textalign == TEXTALIGN_RIGHT:
+            text_left = right - text_width
+            
         margin = np.ceil(0.05 * text_height)
 
         draw.rectangle(
-            [(left, text_bottom - text_height - 2 * margin), (left + text_width,
+            [(text_left, text_bottom - text_height - 2 * margin), (text_left + text_width,
                                                               text_bottom)],
             fill=color)
 
         draw.text(
-            (left + margin, text_bottom - text_height - margin),
+            (text_left + margin, text_bottom - text_height - margin),
             display_str,
             fill='black',
             font=font)

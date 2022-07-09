@@ -100,7 +100,8 @@ def get_video_fs(input_video_file):
     return Fs
 
 
-def video_to_frames(input_video_file, output_folder, overwrite=True):
+def video_to_frames(input_video_file, output_folder, overwrite=True, every_n_frames=None, 
+                    verbose=False):
     """
     Render every frame of [input_video_file] to a .jpg in [output_folder]
     
@@ -141,22 +142,31 @@ def video_to_frames(input_video_file, output_folder, overwrite=True):
             print('Skipping video {}, all output frames exist'.format(input_video_file))
             return frame_filenames,Fs
         else:
-            print("Rendering video, couldn't find {}".format(missing_frame_number))
+            pass
+            # print("Rendering video {}, couldn't find frame {}".format(
+            #    input_video_file,missing_frame_number))
     
     # ...if we need to check whether to skip this video entirely
         
-    print('Reading {} frames at {} Hz from {}'.format(n_frames,Fs,input_video_file))
+    if verbose:
+        print('Reading {} frames at {} Hz from {}'.format(n_frames,Fs,input_video_file))
 
     frame_filenames = []
 
-    for frame_number in tqdm(range(0,n_frames)):
+    # for frame_number in tqdm(range(0,n_frames)):
+    for frame_number in range(0,n_frames):
 
         success,image = vidcap.read()
         if not success:
             assert image is None
-            print('Read terminating at frame {} of {}'.format(frame_number,n_frames))
+            if verbose:
+                print('Read terminating at frame {} of {}'.format(frame_number,n_frames))
             break
 
+        if every_n_frames is not None:
+            if frame_number % every_n_frames != 0:
+                continue
+            
         frame_filename = 'frame{:05d}.jpg'.format(frame_number)
         frame_filename = os.path.join(output_folder,frame_filename)
         frame_filenames.append(frame_filename)
@@ -178,7 +188,8 @@ def video_to_frames(input_video_file, output_folder, overwrite=True):
             except Exception as e:
                 print('Error on frame {} of {}: {}'.format(frame_number,n_frames,str(e)))
 
-    print('\nExtracted {} of {} frames'.format(len(frame_filenames),n_frames))
+    if verbose:
+        print('\nExtracted {} of {} frames'.format(len(frame_filenames),n_frames))
 
     vidcap.release()    
     return frame_filenames,Fs
@@ -186,7 +197,7 @@ def video_to_frames(input_video_file, output_folder, overwrite=True):
 
 def video_folder_to_frames(input_folder:str, output_folder_base:str, 
                            recursive:bool=True, overwrite:bool=True,
-                           n_threads:int=1):
+                           n_threads:int=1, every_n_frames:int=None):
     """
     For every video file in input_folder, create a folder within output_folder_base, and 
     render every frame of the video to .jpg in that folder.
@@ -213,7 +224,8 @@ def video_folder_to_frames(input_folder:str, output_folder_base:str,
     
         # Render frames
         # input_video_file = input_fn_absolute; output_folder = output_folder_video
-        frame_filenames,fs = video_to_frames(input_fn_absolute,output_folder_video,overwrite=overwrite)
+        frame_filenames,fs = video_to_frames(input_fn_absolute,output_folder_video,
+                                             overwrite=overwrite,every_n_frames=every_n_frames)
         
         return frame_filenames,fs
     
@@ -327,9 +339,7 @@ def frame_results_to_video_results(input_file,output_file,options:FrameToVideoOp
     with open(output_file,'w') as f:
         f.write(s)
     
-    #%%
-    
-    
+        
 #%% Test driver
 
 if False:

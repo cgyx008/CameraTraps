@@ -22,28 +22,36 @@ Ground truth, if available, must be in the COCO Camera Traps format.
 import argparse
 import collections
 import copy
-from enum import IntEnum
 import errno
 import io
 import itertools
-from multiprocessing.pool import ThreadPool
 import os
 import sys
 import time
-from typing import Any, Dict, Iterable, Optional, Tuple
 import uuid
+import urllib
 import warnings
 
-import matplotlib
+from typing import Any, Dict, Iterable, Optional, Tuple
+from enum import IntEnum
+from multiprocessing.pool import ThreadPool
+
+# This line was added circa 2018 and it made sense at the time; removing it in 2022
+# because matplotlib *mostly* does the right thing now, and overwriting the current
+# matplotlib environment is questionable behavior.  Possible breaking change for 
+# some users.
+#
+# import matplotlib; matplotlib.use('agg')
+
 import matplotlib.pyplot as plt
 import numpy as np
 import humanfriendly
 import pandas as pd
+
 from sklearn.metrics import precision_recall_curve, confusion_matrix, average_precision_score
 from tqdm import tqdm
 
-# Assumes ai4eutils is on the python path
-# https://github.com/Microsoft/ai4eutils
+# Assumes ai4eutils is on the python path (https://github.com/Microsoft/ai4eutils)
 from write_html_image_list import write_html_image_list
 import path_utils
 
@@ -54,7 +62,6 @@ from data_management.cct_json_utils import (CameraTrapJsonUtils, IndexedJsonDb)
 from api.batch_processing.postprocessing.load_api_results import load_api_results
 from ct_utils import args_to_object
 
-matplotlib.use('agg')
 warnings.filterwarnings('ignore', '(Possibly )?corrupt EXIF data', UserWarning)
 
 
@@ -102,7 +109,7 @@ class PostProcessingOptions:
     # detections_animal, detections_person, detections_vehicle
     rendering_bypass_sets = []
 
-    confidence_threshold = 0.85
+    confidence_threshold = 0.8
     classification_confidence_threshold = 0.5
 
     # Used for summary statistics only
@@ -119,8 +126,13 @@ class PostProcessingOptions:
     line_thickness = 4
     box_expansion = 0
 
+    job_name_string = None
+    model_version_string = None
+    
     sort_html_by_filename = True
 
+    link_images_to_originals = True
+    
     # Optionally separate detections into categories (animal/vehicle/human)
     separate_detections_by_category = True
 
@@ -145,10 +157,7 @@ class PostProcessingOptions:
     # Control rendering parallelization
     parallelize_rendering_n_cores: Optional[int] = 100
     parallelize_rendering = False
-
-    # Determines whether missing images force an error
-    allow_missing_images = False
-
+    
 # ...PostProcessingOptions
 
 
@@ -344,6 +353,8 @@ def render_bounding_boxes(
     image = Image.open(stream).resize(viz_size)
     """
 
+    image_full_path = None
+    
     if res in options.rendering_bypass_sets:
 
         sample_name = res + '_' + path_utils.flatten_path(image_relative_path)
@@ -361,43 +372,53 @@ def render_bounding_boxes(
             image = vis_utils.open_image(image_full_path)
         except:
             print('Warning: could not open image file {}'.format(image_full_path))
-            return ''
-
-        if options.viz_target_width is not None:
-            image = vis_utils.resize_image(image, options.viz_target_width)
-
-        vis_utils.render_detection_bounding_boxes(
-            detections, image,
-            label_map=detection_categories,
-            classification_label_map=classification_categories,
-            confidence_threshold=options.confidence_threshold,
-            thickness=options.line_thickness,
-            expansion=options.box_expansion)
-
+            image = None
+            # return ''
+        
         # Render images to a flat folder... we can use os.sep here because we've
         # already normalized paths
         sample_name = res + '_' + path_utils.flatten_path(image_relative_path)
         fullpath = os.path.join(options.output_dir, res, sample_name)
-        try:
-            image.save(fullpath)
-        except OSError as e:
-            # errno.ENAMETOOLONG doesn't get thrown properly on Windows, so
-            # we awkwardly check against a hard-coded limit
-            if (e.errno == errno.ENAMETOOLONG) or (len(fullpath) >= 259):
-                extension = os.path.splitext(sample_name)[1]
-                sample_name = res + '_' + str(uuid.uuid4()) + extension
-                image.save(os.path.join(options.output_dir, res, sample_name))
-            else:
-                raise
+
+        if image is not None:
+            
+            if options.viz_target_width is not None:
+                image = vis_utils.resize_image(image, options.viz_target_width)
+    
+            vis_utils.render_detection_bounding_boxes(
+                detections, image,
+                label_map=detection_categories,
+                classification_label_map=classification_categories,
+                confidence_threshold=options.confidence_threshold,
+                thickness=options.line_thickness,
+                expansion=options.box_expansion)
+    
+            try:
+                image.save(fullpath)
+            except OSError as e:
+                # errno.ENAMETOOLONG doesn't get thrown properly on Windows, so
+                # we awkwardly check against a hard-coded limit
+                if (e.errno == errno.ENAMETOOLONG) or (len(fullpath) >= 259):
+                    extension = os.path.splitext(sample_name)[1]
+                    sample_name = res + '_' + str(uuid.uuid4()) + extension
+                    image.save(os.path.join(options.output_dir, res, sample_name))
+                else:
+                    raise
 
     # Use slashes regardless of os
     file_name = '{}/{}'.format(res,sample_name)
 
-    return {
+    info = {
         'filename': file_name,
         'title': display_name,
         'textStyle': 'font-family:verdana,arial,calibri;font-size:80%;text-align:left;margin-top:20;margin-bottom:5'
     }
+    
+    # Optionally add links back to the original images
+    if options.link_images_to_originals and (image_full_path is not None):
+        info['linkTarget'] = urllib.parse.quote(image_full_path)
+        
+    return info
 
 # ...render_bounding_boxes
 
@@ -508,10 +529,11 @@ def process_batch_results(options: PostProcessingOptions
 
     # Convert keys and values to lowercase
     classification_categories = other_fields.get('classification_categories', {})
-    classification_categories = {
-        k.lower(): v.lower()
-        for k, v in classification_categories.items()
-    }
+    if classification_categories is not None:
+        classification_categories = {
+            k.lower(): v.lower()
+            for k, v in classification_categories.items()
+        }
 
     # Add column 'pred_detection_label' to indicate predicted detection status,
     # not separating out the classes
@@ -539,6 +561,29 @@ def process_batch_results(options: PostProcessingOptions
         print('...and {} almost-positives'.format(n_almosts))
 
 
+    ##%% Pull out descriptive metadata
+
+    if options.job_name_string is not None:
+        job_name_string = options.job_name_string
+    else:
+        # This is rare; it only happens during debugging when the caller
+        # is supplying already-loaded API results.
+        if options.api_output_file is None:
+            job_name_string = 'unknown'
+        else:
+            job_name_string = os.path.basename(options.api_output_file)
+    
+    if options.model_version_string is not None:
+        model_version_string = options.model_version_string
+    else:
+        
+        if 'info' not in other_fields or 'detector' not in other_fields['info']:
+            print('No model metadata supplied, assuming MDv4')
+            model_version_string = 'MDv4 (assumed)'
+        else:            
+            model_version_string = other_fields['info']['detector']
+    
+        
     ##%% If we have ground truth, remove images we can't match to ground truth
 
     if ground_truth_indexed_db is not None:
@@ -610,7 +655,7 @@ def process_batch_results(options: PostProcessingOptions
         b_valid_ground_truth = gt_detections >= 0.0
 
         p_detection_pr = p_detection[b_valid_ground_truth]
-        gt_detections_pr = gt_detections[b_valid_ground_truth]
+        gt_detections_pr = (gt_detections[b_valid_ground_truth] == 1.)
 
         print('Including {} of {} values in p/r analysis'.format(np.sum(b_valid_ground_truth),
               len(b_valid_ground_truth)))
@@ -632,16 +677,25 @@ def process_batch_results(options: PostProcessingOptions
 
         # Thresholds go up throughout precisions/recalls/thresholds; find the last
         # value where recall is at or above target.  That's our precision @ target recall.
-        target_recall = 0.9
-        b_above_target_recall = np.where(recalls >= target_recall)
-        if not np.any(b_above_target_recall):
+        
+        i_above_target_recall = (np.where(recalls >= options.target_recall))
+        
+        # np.where returns a tuple of arrays, but in this syntax where we're 
+        # comparing an array with a scalar, there will only be one element.
+        assert len (i_above_target_recall) == 1
+        
+        # Convert back to a list
+        i_above_target_recall = i_above_target_recall[0].tolist()
+        
+        if len(i_above_target_recall) == 0:
             precision_at_target_recall = 0.0
         else:
-            i_target_recall = np.argmax(b_above_target_recall)
-            precision_at_target_recall = precisions[i_target_recall]
-        print('Precision at {:.1%} recall: {:.1%}'.format(target_recall, precision_at_target_recall))
+            precision_at_target_recall = precisions[i_above_target_recall[-1]]
+        print('Precision at {:.1%} recall: {:.1%}'.format(options.target_recall,
+                                                          precision_at_target_recall))
 
-        cm = confusion_matrix(gt_detections_pr, np.array(p_detection_pr) > options.confidence_threshold)
+        cm_predictions = np.array(p_detection_pr) > options.confidence_threshold
+        cm = confusion_matrix(gt_detections_pr, cm_predictions, labels=[False,True])
 
         # Flatten the confusion matrix
         tn, fp, fn, tp = cm.ravel()
@@ -652,7 +706,8 @@ def process_batch_results(options: PostProcessingOptions
             (precision_at_confidence_threshold + recall_at_confidence_threshold)
 
         print('At a confidence threshold of {:.1%}, precision={:.1%}, recall={:.1%}, f1={:.1%}'.format(
-                options.confidence_threshold, precision_at_confidence_threshold, recall_at_confidence_threshold, f1))
+                options.confidence_threshold, precision_at_confidence_threshold,
+                recall_at_confidence_threshold, f1))
 
         ##%% Collect classification results, if they exist
 
@@ -781,12 +836,12 @@ def process_batch_results(options: PostProcessingOptions
 
         # Write precision/recall plot to .png file in output directory
         t = 'Precision-Recall curve: AP={:0.1%}, P@{:0.1%}={:0.1%}'.format(
-            average_precision, target_recall, precision_at_target_recall)
+            average_precision, options.target_recall, precision_at_target_recall)
         fig = plot_utils.plot_precision_recall_curve(precisions, recalls, t)
+        
         pr_figure_relative_filename = 'prec_recall.png'
         pr_figure_filename = os.path.join(output_dir, pr_figure_relative_filename)
-        plt.savefig(pr_figure_filename)
-        # plt.show(block=False)
+        fig.savefig(pr_figure_filename)
         plt.close(fig)
 
 
@@ -934,6 +989,13 @@ def process_batch_results(options: PostProcessingOptions
         <body>
         <h2>Evaluation</h2>
 
+        <h3>Job metadata</h3>
+        
+        <div class="contentdiv">
+        <p>Job name: {}<br/>
+        <p>Model version: {}</p>
+        </div>
+        
         <h3>Sample images</h3>
         <div class="contentdiv">
         <p>A sample of {} images, annotated with detections above {:.1%} confidence.</p>
@@ -945,7 +1007,7 @@ def process_batch_results(options: PostProcessingOptions
         CLASSIFICATION_PLACEHOLDER_2
         </div>
         """.format(
-            style_header,
+            style_header,job_name_string,model_version_string,
             image_count, options.confidence_threshold,
             all_tp_count, all_tp_count/total_count,
             image_counts['tn'], image_counts['tn']/total_count,
@@ -1143,7 +1205,7 @@ def process_batch_results(options: PostProcessingOptions
 
                 for det in detections:
 
-                    if 'classifications' in det:
+                    if ('classifications' in det):
 
                         # This is a list of [class,confidence] pairs, sorted by confidence
                         classifications = det['classifications']
@@ -1218,25 +1280,26 @@ def process_batch_results(options: PostProcessingOptions
                 continue
             total_images += v
 
-        if options.allow_missing_images:
-            if total_images != image_count:
-                print('Warning: image_count is {}, total_images is {}'.format(total_images,image_count))
-            else:
-                assert total_images == image_count, \
-                    'Error: image_count is {}, total_images is {}'.format(total_images,image_count)
-
+        if total_images != image_count:
+            print('Warning, missing images: image_count is {}, total_images is {}'.format(total_images,image_count))
+        
         almost_detection_string = ''
         if options.include_almost_detections:
             almost_detection_string = ' (&ldquo;almost detection&rdquo; threshold at {:.1%})'.format(
                 options.almost_detection_confidence_threshold)
 
         index_page = """<html>\n{}\n<body>\n
-        <h2>Visualization of results</h2>\n
+        <h2>Visualization of results for {}</h2>\n
         <p>A sample of {} images (of {} total)FAILURE_PLACEHOLDER, annotated with detections above {:.1%} confidence{}.</p>\n
+        
+        <div class="contentdiv">
+        <p>Model version: {}</p>
+        </div>
+        
         <h3>Sample images</h3>\n
         <div class="contentdiv">\n""".format(
-            style_header, image_count, len(detections_df), options.confidence_threshold,
-            almost_detection_string)
+            style_header, job_name_string, image_count, len(detections_df), options.confidence_threshold,
+            almost_detection_string, model_version_string)
 
         failure_string = ''
         if n_failures is not None:
@@ -1312,15 +1375,15 @@ if False:
 
     #%%
 
-    base_dir = r'D:\wildlife_data\bh'
+    base_dir = r'G:\temp\md'
     options = PostProcessingOptions()
     options.image_base_dir = base_dir
-    options.output_dir = os.path.join(base_dir, 'postprocessing_filtered')
+    options.output_dir = os.path.join(base_dir, 'postprocessing')
     options.api_output_filename_replacements = {} # {'20190430cameratraps\\':''}
-    options.ground_truth_filename_replacements = {'\\data\\blob\\':''}
-    options.api_output_file = os.path.join(base_dir, 'bh_5570_detections.filtered.csv')
-    options.ground_truth_json_file = os.path.join(base_dir, 'bh.json')
-    options.unlabeled_classes = ['human']
+    options.ground_truth_filename_replacements = {} # {'\\data\\blob\\':''}
+    options.api_output_file = os.path.join(base_dir, 'results.json')
+    options.ground_truth_json_file = os.path.join(base_dir, 'gt.json')
+    # options.unlabeled_classes = ['human']
 
     ppresults = process_batch_results(options)
     # os.start(ppresults.output_html_file)
@@ -1352,6 +1415,10 @@ def main():
         default=options.confidence_threshold,
         help='Confidence threshold for statistics and visualization')
     parser.add_argument(
+        '--almost_detection_confidence_threshold', type=float,
+        default=options.almost_detection_confidence_threshold,
+        help='Almost-detection confidence threshold for statistics and visualization')
+    parser.add_argument(
         '--target_recall', type=float, default=options.target_recall,
         help='Target recall (for statistics only)')
     parser.add_argument(
@@ -1361,6 +1428,9 @@ def main():
     parser.add_argument(
         '--viz_target_width', type=int, default=options.viz_target_width,
         help='Output image width')
+    parser.add_argument(
+        '--include_almost_detections', action='store_true',
+        help='Include a separate category for images just above a second confidence threshold')
     parser.add_argument(
         '--random_output_sort', action='store_true',
         help='Sort output randomly (defaults to sorting by filename)')

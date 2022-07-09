@@ -3,32 +3,46 @@
 This repo contains the tools for training, running, and evaluating detectors and classifiers for images collected from motion-triggered camera traps.  The core functionality provided is:
 
 - Data parsing from frequently-used camera trap metadata formats into a common format
-- Training and evaluation of detectors, particularly our "[MegaDetector](https://github.com/microsoft/CameraTraps/blob/master/megadetector.md)", which does a pretty good job finding animals, people, and vechicles (and therefore is pretty good at finding empty images) in a variety of terrestrial ecosystems
-- A [batch processing API](https://github.com/microsoft/CameraTraps/tree/master/api/batch_processing) that runs MegaDetector on large image collections, to accelerate population surveys
-- A [real-time API](https://github.com/microsoft/CameraTraps/tree/master/api/synchronous) that runs MegaDetector (and some species classifiers) synchronously, primarily to support anti-poaching scenarios (e.g. see this [blog post](https://customers.microsoft.com/en-us/story/1384184517929343083-wildlife-protection-solutions-nonprofit-ai-for-earth) describing how this API supports [Wildlife Protection Solutions](https://wildlifeprotectionsolutions.org/))
-- A [Web-based demo](https://aka.ms/cameratrapdemo) that calls our real-time API
+- Training and evaluation of detectors, particularly [MegaDetector](megadetector.md), an object detection model that does a pretty good job finding animals, people, and vehicles (and therefore is pretty good at finding empty images) in a variety of terrestrial ecosystems
+- A [batch processing API](https://github.com/microsoft/CameraTraps/tree/main/api/batch_processing) that runs MegaDetector on large image collections, to accelerate population surveys
+- A [real-time API](https://github.com/microsoft/CameraTraps/tree/main/api/synchronous) that runs MegaDetector (and some species classifiers) synchronously, primarily to support anti-poaching scenarios (e.g. see this [blog post](https://customers.microsoft.com/en-us/story/1384184517929343083-wildlife-protection-solutions-nonprofit-ai-for-earth) describing how this API supports [Wildlife Protection Solutions](https://wildlifeprotectionsolutions.org/))
+- A [Web-based demo](https://github.com/microsoft/CameraTraps/tree/main/demo) that calls our real-time API
 - Training and evaluation of species-level classifiers for specific data sets
 - Miscellaneous useful tools for manipulating camera trap data
 - Research experiments we're doing around camera trap data (i.e., some directories are highly experimental and you should take them with a grain of salt)
 
-Classifiers and detectors are trained using TensorFlow.
+This repo is maintained by folks at [Ecologize](http://ecologize.org/) and folks in the [Microsoft AI for Earth](http://aka.ms/aiforearth) program who like looking at pictures of animals.  We want to support conservation, of course, but we also really like looking at pictures of animals.
 
-This repo is maintained by folks in the [Microsoft AI for Earth](http://aka.ms/aiforearth) program who like looking at pictures of animals.  I mean, we want to use machine learning to support conservation too, but we also really like looking at pictures of animals.
 
-# Who is using the AI for Earth camera trap tools?
+# What's MegaDetector all about?
 
-We work with ecologists all over the world to help them spend less time annotating images and more time thinking about conservation.  You can read a little more about how this works on our [AI for Earth camera trap collaborations page](collaborations.md).
+The main model that we train and run using tools in this repo is [MegaDetector](megadetector.md), an object detection model that identifies animals, people, and vehicles in camera trap images.  This model is trained on several hundred thousand bounding boxes from a variety of ecosystems.  Lots more information &ndash; including download links and instructions for running the model &ndash; is available on the [MegaDetector page](megadetector.md).
 
-You can also read about what we do to support camera trap researchers in our recent [blog post](https://medium.com/microsoftazure/accelerating-biodiversity-surveys-with-azure-machine-learning-9be53f41e674).
+Here's a "teaser" image of what detector output looks like:
 
-Here are a few of the organizations that have used AI for Earth camera trap tools... we're only listing organizations who (a) we know about and (b) have generously allowed us to refer to them here, so if you're using MegaDetector or other tools from this repo and would like to be added to this list, <a href="mailto:cameratraps@lila.science">email us</a>!
+![Red bounding box on fox](images/detector_example.jpg)
+
+Image credit University of Washington.
+
+
+# How do I get started?
+
+If you're just considering the use of AI in your workflow, and aren't even sure yet whether MegaDetector would be useful to you, we recommend reading [this page](collaborations.md) first.
+
+If you're already familiar with MegaDetector and you're ready to run it on your data (and you have some familiarity with running Python code), see the [MegaDetector README](megadetector.md) for instructions on downloading and running MegaDetector.
+
+
+# Who is using MegaDetector?
+
+We work with ecologists all over the world to help them spend less time annotating images and more time thinking about conservation.  You can read a little more about how this works on our [getting started with MegaDetector](collaborations.md) page.
+
+Here are a few of the organizations that have used MegaDetector... we're only listing organizations who (a) we know about and (b) have kindly given us permission to refer to them here, so if you're using MegaDetector or other tools from this repo and would like to be added to this list, <a href="mailto:cameratraps@lila.science">email us</a>!
 
 * Idaho Department of Fish and Game
 * San Diego Zoo Global
 * University of Washington Quantitative Ecology Lab
 * University of Idaho
 * Borderlands Research Institute at Sul Ross State University
-* Borneo Nature Foundation
 * Parks Canada
 * Australian Wildlife Conservancy
 * Lab of Dr. Bilal Habib at the Wildlife Institute of India
@@ -65,22 +79,22 @@ Here are a few of the organizations that have used AI for Earth camera trap tool
 * National Park Service Santa Monica Mountains Recreation Area
 * Conservation X Labs
 * The Nature Conservancy in Wyoming
-
+* Seattle Urban Carnivore Project
+* Road Ecology Center, University of California, Davis
+* [TrapTagger](https://wildeyeconservation.org/trap-tagger-about/)
+* Blackbird Environmental
+* UNSW Sydney
+* Taronga Conservation Society
+* Myall Lakes Dingo Project
+* Irvine Ranch Conservancy ([story](https://www.ocregister.com/2022/03/30/ai-software-is-helping-researchers-focus-on-learning-about-ocs-wild-animals/))
+* SUMHAL, Estación Biológica de Doñana
+* Capitol Reef National Park and Utah Valley University
+* University of Victoria Applied Conservation Macro Ecology (ACME) Lab 
+* Université du Québec en Outaouais Institut des Science de la Forêt Tempérée (ISFORT)
 
 # Data
 
 This repo does not directly host camera trap data, but we work with our collaborators to make data and annotations available whenever possible on [lila.science](http://lila.science).
-
-
-## MegaDetector
-
-The main model that we train and run using tools in this repo is [MegaDetector](megadetector.md), an object detection model that identifies animals, people, and vehicles in camera trap images.  This model is trained on several hundred thousand bounding boxes from a variety of ecosystems.  Lots more information &ndash; including download links &ndash; is available on the [MegaDetector page](megadetector.md).
-
-Here's a "teaser" image of what detector output looks like:
-
-![Red bounding box on fox](images/detector_example.jpg)
-
-Image credit University of Washington.
 
 
 # Contact
@@ -95,35 +109,39 @@ This repo is organized into the following folders...
 
 ## api
 
-Code for hosting our models as an API, either for synchronous operation (e.g. for real-time inference or for our Web-based demo) or as a batch process (for large biodiversity surveys).
+Code for hosting our models as an API, either for synchronous operation (e.g. for real-time inference or for our Web-based demo) or as a batch process (for large biodiversity surveys).  The synchronous API in this folder does a bunch of fancy load-balancing stuff, in comparison to...
+
+
+## api-flask-redis
+
+Code for a simplified synchronous API that runs as a single-node Flask app.
 
 
 ## classification
 
 Experimental code for training species classifiers on new data sets, generally trained on MegaDetector crops.  Currently the main pipeline described in this folder relies on a large database of labeled images that is not publicly available; therefore, this folder is not yet set up to facilitate training of your own classifiers.  However, it is useful for <i>users</i> of the classifiers that we train, and contains some useful starting points if you are going to take a "DIY" approach to training classifiers on cropped images.  
 
-The folder also contains a [tutorial](https://github.com/microsoft/CameraTraps/blob/master/archive/classification_marcel/TUTORIAL.md) on training your own classifier using MegaDetector, which has no dependencies on private data, although this tutorial uses somehwat obsolete frameworks and may not be the best starting point for new projects.
-
 All that said, here's another "teaser image" of what you get at the end of training and running a classifier:
 
 <img src="images/warthog_classifications.jpg" width="700">
+
 
 ## data_management
 
 Code for:
 
-- Converting frequently-used metadata formats to [COCO Camera Traps](https://github.com/Microsoft/CameraTraps/blob/master/data_management/README.md#coco-cameratraps-format) format
-- Creating, visualizing, and  editing COCO Camera Traps .json databases
-- Generating tfrecords
+* Converting frequently-used metadata formats to [COCO Camera Traps](https://github.com/Microsoft/CameraTraps/blob/main/data_management/README.md#coco-cameratraps-format) format
+* Creating, visualizing, and  editing COCO Camera Traps .json databases
+
 
 ## demo
 
-Source for the Web-based demo of our MegaDetector model (we'll release the demo soon!).
+Source for the Web-based demo of our MegaDetector model.
 
 
 ## detection
 
-Code for training and evaluating detectors.
+Code for training, running, and evaluating MegaDetector.
 
 
 ## research
@@ -133,98 +151,25 @@ Ongoing research projects that use this repository in one way or another; as of 
 
 ## sandbox
 
-Random things that don't fit in any other directory.  Currently contains a single file, a not-super-useful but super-duper-satisfying and mostly-successful attempt to use OCR to pull metadata out of image pixels in a fairly generic way, to handle those pesky cases when image metadata is lost.
+Random things that don't fit in any other directory.  For example:
+
+* A not-super-useful but super-duper-satisfying and mostly-successful attempt to use OCR to pull metadata out of image pixels in a fairly generic way, to handle those pesky cases when image metadata is lost.
+* Experimental postprocessing scripts that were built for a single use case
 
 
-# Installation
+## taxonomy-mapping
 
-We use [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) to manage our Python package dependencies. Conda is a package and environment management system. You can install a lightweight distribution of conda (Miniconda) for your OS via installers at [https://docs.conda.io/en/latest/miniconda.html](https://docs.conda.io/en/latest/miniconda.html).
+Code to facilitate mapping data-set-specific categories (e.g. "lion", which means very different things in Idaho vs. South Africa) to a standard taxonomy.
 
-## Initial setup
 
-### Utility and visualization scripts
+## test-images
 
-The required Python packages for running utility and visualization scripts in this repo are listed in [environment.yml](environment.yml).  To set up your environment for these scripts, in your shell, navigate to the root directory of this repo and issue the following command to create a virtual environment via conda called `cameratraps` (specified in the environment file) and install the required packages:
+A handful of images from LILA that facilitate testing and debugging.
 
-```
-conda env create --file environment.yml
-```
 
-For unix users, you need to have gcc installed in order to compile the pip packages. If you do not already have gcc installed, run the following command before creating the conda environment:
+## visualization
 
-```bash
-sudo apt update
-sudo apt install build-essential
-```
-
-### Machine learning scripts
-
-Scripts that execute machine learning code &ndash; specifically, scripts in the folders `api`, `detection`, and `classification` &ndash; require additional depdendencies.  In particular, the `detection/run_tf_detector*.py` scripts should use [environment-detector.yml](environment-detector.yml) to set up the environment, as follows:
-
-```
-conda env create --file environment-detector.yml
-```
-
-This environment file allows any TensorFlow version from 1.9 to 1.15 to be installed, but you may need to adjust that version for your environment.  Specifically, if you receive a CUDA error, you may need to change the line:
-
-`- tensorflow-gpu>=1.9.0, <1.15.0`
-
-...to:
-
-`- tensorflow-gpu=1.13.1`
-
-...before creating your environment.
-
-### Troubleshooting
-
-If you run into an error while creating either of the above environments, try updating conda to version 4.5.11 or above. Check the version of conda using `conda --version`.
-
-## Usage
-
-To enter the conda virtual environment at your current shell, run:
-
-`conda activate cameratraps`
-
-...or, if you used the environment-detector.yml file above:
-
-`conda activate cameratraps-detector`
-
-You should see `(cameratraps)` prepended to the command line prompt. Invoking `python` or `jupyter notebook` will now be using the interpreter and packages available in this virtual env.
-
-To exit the virtual env, issue `conda deactivate`.
-
-## Add additional packages
-
-If you need to use additional packages, add them to the environment file and run
-
-```bash
-conda env update --name cameratraps --file environment.yml --prune
-```
-or
-```bash
-conda env update --name cameratraps-detector --file environment-detector.yml --prune
-```
-
-## Other notes
-
-In some scripts, we also assume that you have the [AI for Earth utilities repo](https://github.com/Microsoft/ai4eutils) (`ai4eutils`) cloned and its path appended to `PYTHONPATH`. You can append a path to `PYTHONPATH` for the current shell session by executing the following on Windows:
-
-```set PYTHONPATH="%PYTHONPATH%;c:\wherever_you_put_the_ai4eutils_repo"```
-
-You can do this with the following on Linux:
-
-```export PYTHONPATH="$PYTHONPATH:/absolute/path/to/repo/ai4eutils"```
-
-Adding this line to your `~/.bashrc` (on Linux) modifies `PYTHONPATH` permanently.
-
-We also do our best to follow [Google's Python Style Guide](http://google.github.io/styleguide/pyguide.html), and we have adopted their `pylintrc` file, with the following differences:
-- indent code blocks with 4 spaces (instead of 2)
-
-To lint a file, run `pylint` with the CameraTraps repo folder as the current working directory. This allows pylint to recognize the `pylintrc` file. For example,
-
-```bash
-pylint classification/train_classifier.py
-```
+Shared tools for visualizing images with ground truth and/or predicted annotations.
 
 
 # Gratuitous pretty camera trap picture
@@ -250,4 +195,4 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 ## License
 
-This repository is licensed with the [MIT license](https://github.com/Microsoft/dotnet/blob/master/LICENSE).
+This repository is licensed with the [MIT license](https://github.com/Microsoft/dotnet/blob/main/LICENSE).
