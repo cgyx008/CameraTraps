@@ -25,11 +25,11 @@ def extract_frames(video_path: Path):
             continue
 
         fp = frames_save_root / f'{video_path.stem}_{i:0>{num_bits}d}.jpg'
-        if not cv2.imwrite(str(fp), frame):
-            # If cv2 cannot save images for Chinese character or other errors,
-            # then use PIL to save images.
-            im = Image.fromarray(frame)
-            im.save(fp)
+        # if not cv2.imwrite(str(fp), frame):
+        # If cv2 cannot save images for Chinese character or other errors,
+        # then use PIL to save images.
+        im = Image.fromarray(frame)
+        im.save(fp)
 
 
 def extract_videos_frames(videos_root=Path(r'G:\Data\AD\video_20220512')):
@@ -46,20 +46,24 @@ def extract_videos_frames(videos_root=Path(r'G:\Data\AD\video_20220512')):
     # videos from 192.168.2.18/Reolinkvideo_Out
     >>> extract_videos_frames(
             Path(r'G:/Data/AD/reolink/videos/Reolinkvideo_Out_UserVideos'))
+
+    # videos from 192.168.2.18/ReolinkPR_Out_Keen
+    >>> extract_videos_frames('G:/Data/AD/reolink/videos/ReolinkPR_Out_Keen')
+
+    # test garbled
+    >>> extract_videos_frames('G:/Data/AD/reolink/videos/garbled')
     """
-    i = 0
     video_paths = [Path(root) / file
                    for root, dirs, files in os.walk(videos_root)
                    for file in files
                    if file[-4:].lower() in {'.avi', '.mov', '.mp4'}]
     for i, video_path in enumerate(video_paths):
-        print(f'{i} / {len(video_paths)} Extracting file: {video_path}')
+        print(f'{i + 1} / {len(video_paths)} Extracting file: {video_path}')
         extract_frames(video_path)
 
 
 def main():
-    extract_videos_frames(
-        Path(r'G:/Data/AD/reolink/videos/Reolinkvideo_Out_UserVideos'))
+    extract_videos_frames('G:/Data/AD/reolink/videos/ReolinkPR_Out_Keen')
 
 
 if __name__ == '__main__':
