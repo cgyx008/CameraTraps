@@ -54,6 +54,7 @@ import itertools
 
 from datetime import datetime
 from functools import partial
+from pathlib import Path
 
 import humanfriendly
 from tqdm import tqdm
@@ -63,6 +64,8 @@ import multiprocessing
 from threading import Thread
 from multiprocessing import Process
 from multiprocessing.pool import Pool as workerpool
+
+sys.path.append(r'D:\Projects\yolov5')
 
 # Number of images to pre-fetch
 max_queue_size = 10
@@ -662,5 +665,33 @@ def main():
     print('Done!')
 
 
+def detect_dir():
+    """
+    Detect images recursively in a directory.
+    Dir
+        |- Cat
+               |- 001.jpg
+               |- 002.jpg
+        |- Cat_md.json  # detection results will be saved here
+        |- Dog
+               |- 001.jpg
+        |- Dog_md.json
+
+    """
+    root = Path(r'G:\Data\AD\reolink\videos\ReolinkPR_Out_Keen')
+    detector_file = r'D:\Projects\CameraTraps\weights\v5\md_v5a.0.0.pt'
+    img_dirs = sorted(list(set(p.parent for p in root.glob('**/*.jpg'))))
+    for i, img_dir in enumerate(img_dirs):
+        print(f'Detecting {i + 1} / {len(img_dirs)}: {img_dir} ...')
+        sys.argv = sys.argv[:1]
+        image_file = str(img_dir)
+        output_file = f'{img_dir}_md.json'
+        opts = ['--quiet']
+        cmd = [detector_file, image_file, output_file, *opts]
+        sys.argv.extend(cmd)
+
+        main()
+
+
 if __name__ == '__main__':
-    main()
+    detect_dir()
