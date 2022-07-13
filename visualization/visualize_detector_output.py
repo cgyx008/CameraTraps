@@ -147,8 +147,9 @@ def visualize_detector_output(detector_output_path: str,
             entry['detections'], image, label_map=detector_label_map,
             confidence_threshold=confidence)
 
-        for char in ['/', '\\', ':']:
-            image_id = image_id.replace(char, '~')
+        # for char in ['/', '\\', ':']:
+        #     image_id = image_id.replace(char, '~')
+        image_id = Path(image_id).name
         annotated_img_path = os.path.join(out_dir, f'anno_{image_id}')
         annotated_img_paths.append(annotated_img_path)
         image.save(annotated_img_path)
