@@ -229,17 +229,35 @@ def main() -> None:
         render_detections_only=args.detections_only)
 
 
-def vis_inat():
-    src = Path(r'F:\data\AD\iNat')
-    dst = Path(r'G:\Data\AD\iNat\mgd_ge_0.999')
+def vis_md(src='F:/data/AD/iNat', dst='G:/Data/AD/iNat/mgd', conf=0.999):
 
-    json_paths = sorted(list(src.glob('**/mgd.json')))
-    src_dirs = [p.parent / 'images' for p in json_paths]
-    dst_dirs = [dst / p.parts[-3] / p.parts[-2] for p in json_paths]
+    """
+    Visualize md.json
 
-    for i in trange(len(json_paths)):
-        cmd = [str(json_paths[i]), str(dst_dirs[i]),
-               '-i', str(src_dirs[i]), '-c', '0.9989', '-w', '-1']
+    :param src: source directory of md.json
+    :type src: str | Path
+    :param dst: destination directory of md.json
+    :type dst: str | Path | None
+    :param conf: visualize boxes with confidence >= conf
+    :type conf: float
+    :return: None
+    :rtype: None
+
+    Examples:
+    # visualize iNat md
+    >>> vis_md()
+
+    # visualize KEEN videos
+    >>> vis_md('G:/Data/AD/reolink/videos/ReolinkPR_Out_Keen', None, 0.9)
+    """
+    src = Path(src)
+    json_paths = sorted(list(src.glob('**/md.json')))
+
+    for i, json_path in enumerate(json_paths):
+        print(f'Processing {i} / {len(json_paths)}: {json_path} ...')
+        out_dir = Path(dst or json_path.parent / f'md_ge_{conf}')
+        cmd = [str(json_path), str(out_dir),
+               '-i', str(json_path.parent), '-c', str(conf), '-w', '-1', '-do']
         sys.argv = sys.argv[:1]
         sys.argv.extend(cmd)
         main()
@@ -247,4 +265,4 @@ def vis_inat():
 
 
 if __name__ == '__main__':
-    vis_inat()
+    vis_md('G:/Data/AD/reolink/videos/ReolinkPR_Out_Keen', None, 0.3)
