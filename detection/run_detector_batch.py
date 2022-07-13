@@ -669,14 +669,15 @@ def main():
 def detect_dir(root=r'G:\Data\AD\reolink\videos\ReolinkPR_Out_Keen'):
     """
     Detect images recursively in a directory.
-    Dir
-        |- Cat
-               |- 001.jpg
-               |- 002.jpg
-               |- md.json  # detection results will be saved here
-        |- Dog
-               |- 001.jpg
-               |- md.json
+    .
+    |- Dir/
+       |- Cat/
+          |- 001.jpg
+          |- 002.jpg
+          |- md.json  # detection results will be saved here
+       |- Dog/
+          |- 001.jpg
+          |- md.json
 
     Example:
     # KEEN videos
