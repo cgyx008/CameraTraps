@@ -10,6 +10,7 @@
 #%% Constants, imports, environment
 
 import os
+import sys
 import tempfile
 import shutil
 import argparse
@@ -403,5 +404,15 @@ def main():
     else:
         process_video(options)
 
-if __name__ == '__main__':
+
+def detect_videos():
+    model_file = r'D:\Projects\CameraTraps\weights\v5\md_v5a.0.0.pt'
+    input_video_file = r'G:\Data\AD\reolink\videos\ReolinkPR_Out_Keen'
+    cmd = [model_file, input_video_file,
+           '--rendering_confidence_threshold', '0.3']
+    sys.argv.extend(cmd)
     main()
+
+
+if __name__ == '__main__':
+    detect_videos()
