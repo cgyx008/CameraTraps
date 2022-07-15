@@ -28,7 +28,7 @@ def extract_frames(video_path: Path):
         # if not cv2.imwrite(str(fp), frame):
         # If cv2 cannot save images for Chinese character or other errors,
         # then use PIL to save images.
-        im = Image.fromarray(frame)
+        im = Image.fromarray(frame[:, :, ::-1])  # bgr2rgb
         im.save(fp)
 
 
