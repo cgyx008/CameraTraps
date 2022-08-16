@@ -53,17 +53,15 @@ def extract_videos_frames(videos_root=Path(r'G:\Data\AD\video_20220512')):
     # test garbled
     >>> extract_videos_frames('G:/Data/AD/reolink/videos/garbled')
     """
-    video_paths = [Path(root) / file
-                   for root, dirs, files in os.walk(videos_root)
-                   for file in files
-                   if file[-4:].lower() in {'.avi', '.mov', '.mp4'}]
+    videos_root = Path(videos_root)
+    video_paths = sorted(list(videos_root.glob('**/*.[am][vop][iv4]')))
     for i, video_path in enumerate(video_paths):
         print(f'{i + 1} / {len(video_paths)} Extracting file: {video_path}')
         extract_frames(video_path)
 
 
 def main():
-    extract_videos_frames('G:/Data/AD/reolink/videos/ReolinkPR_Out_Keen')
+    extract_videos_frames('G:/Data/AD/reolink/videos/2022-08-16_12-20-00')
 
 
 if __name__ == '__main__':
