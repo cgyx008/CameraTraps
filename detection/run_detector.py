@@ -109,6 +109,9 @@ DETECTOR_METADATA = {
 DEFAULT_RENDERING_CONFIDENCE_THRESHOLD = DETECTOR_METADATA['v5b.0.0']['typical_detection_threshold']
 DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD = 0.005
 
+DEFAULT_BOX_THICKNESS = 4
+DEFAULT_BOX_EXPANSION = 0
+
 
 #%% Classes
 
@@ -152,6 +155,20 @@ class ImagePathUtils:
 
 
 #%% Utility functions
+
+def convert_to_tf_coords(array):
+    """From [x1, y1, width, height] to [y1, x1, y2, x2], where x1 is x_min, x2 is x_max
+
+    This is only used to keep the interface of the synchronous API.
+    """
+    x1 = array[0]
+    y1 = array[1]
+    width = array[2]
+    height = array[3]
+    x2 = x1 + width
+    y2 = y1 + height
+    return [y1, x1, y2, x2]
+
 
 def get_detector_metadata_from_version_string(detector_version):
     """
@@ -219,6 +236,14 @@ def is_gpu_available(model_file):
         import torch
         gpu_available = torch.cuda.is_available()
         print('PyTorch reports {} available CUDA devices'.format(torch.cuda.device_count()))
+        if not gpu_available:
+            try:
+                # mps backend only available in torch >= 1.12.0
+                if torch.backends.mps.is_built and torch.backends.mps.is_available():
+                    gpu_available = True
+                    print('PyTorch reports Metal Performance Shaders are available')
+            except AttributeError:
+                pass
         return gpu_available
     else:
         raise ValueError('Unrecognized model file extension for model {}'.format(model_file))
@@ -247,7 +272,9 @@ def load_detector(model_file, force_cpu=False):
 
 def load_and_run_detector(model_file, image_file_names, output_dir,
                           render_confidence_threshold=DEFAULT_RENDERING_CONFIDENCE_THRESHOLD,
-                          crop_images=False):
+                          crop_images=False, box_thickness=DEFAULT_BOX_THICKNESS, 
+                          box_expansion=DEFAULT_BOX_EXPANSION, image_size=None
+                          ):
     """Load and run detector on target images, and visualize the results."""
     
     if len(image_file_names) == 0:
@@ -320,6 +347,8 @@ def load_and_run_detector(model_file, image_file_names, output_dir,
         fn = os.path.join(output_dir, fn)
         return fn
 
+    # ...def input_file_to_detection_file()
+    
     for im_file in tqdm(image_file_names):
 
         try:
@@ -343,7 +372,8 @@ def load_and_run_detector(model_file, image_file_names, output_dir,
             start_time = time.time()
 
             result = detector.generate_detections_one_image(image, im_file,
-                                                            detection_threshold=DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD)
+                                                            detection_threshold=DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD,
+                                                            image_size=image_size)
             detection_results.append(result)
 
             elapsed = time.time() - start_time
@@ -364,10 +394,11 @@ def load_and_run_detector(model_file, image_file_names, output_dir,
 
             else:
 
-                # image is modified in place
+                # Image is modified in place
                 viz_utils.render_detection_bounding_boxes(result['detections'], image,
                                                           label_map=DEFAULT_DETECTOR_LABEL_MAP,
-                                                          confidence_threshold=render_confidence_threshold)
+                                                          confidence_threshold=render_confidence_threshold,
+                                                          thickness=box_thickness, expansion=box_expansion)
                 output_full_path = input_file_to_detection_file(im_file)
                 image.save(output_full_path)
 
@@ -391,6 +422,8 @@ def load_and_run_detector(model_file, image_file_names, output_dir,
     print('- inference took {}, std dev is {}'.format(humanfriendly.format_timespan(ave_time_infer),
                                                       std_dev_time_infer))
 
+# ...def load_and_run_detector()
+
 
 #%% Command-line driver
 
@@ -398,43 +431,73 @@ def main():
 
     parser = argparse.ArgumentParser(
         description='Module to run an animal detection model on images')
+    
     parser.add_argument(
         'detector_file',
         help='Path to TensorFlow (.pb) or PyTorch (.pt) detector model file')
-    group = parser.add_mutually_exclusive_group(required=True)  # must specify either an image file or a directory
+    
+    # Must specify either an image file or a directory
+    group = parser.add_mutually_exclusive_group(required=True)    
     group.add_argument(
         '--image_file',
         help='Single file to process, mutually exclusive with --image_dir')
     group.add_argument(
         '--image_dir',
         help='Directory to search for images, with optional recursion by adding --recursive')
+    
     parser.add_argument(
         '--recursive',
         action='store_true',
         help='Recurse into directories, only meaningful if using --image_dir')
+    
     parser.add_argument(
         '--output_dir',
         help='Directory for output images (defaults to same as input)')
+    
+    parser.add_argument(
+        '--image_size',
+        type=int,
+        default=None,
+        help=('Force image resizing to a (square) integer size (not recommended to change this)'))
+    
     parser.add_argument(
         '--threshold',
         type=float,
         default=DEFAULT_RENDERING_CONFIDENCE_THRESHOLD,
-        help=('Confidence threshold between 0 and 1.0; only render boxes above this confidence'
-              ' (but only boxes above 0.005 confidence will be considered at all)'))
+        help=('Confidence threshold between 0 and 1.0; only render' + 
+              ' boxes above this confidence (defaults to {})'.format(
+              DEFAULT_RENDERING_CONFIDENCE_THRESHOLD)))
+    
     parser.add_argument(
         '--crop',
         default=False,
         action="store_true",
         help=('If set, produces separate output images for each crop, '
               'rather than adding bounding boxes to the original image'))
+    
+    parser.add_argument(
+        '--box_thickness',
+        type=int,
+        default=DEFAULT_BOX_THICKNESS,
+        help=('Line width (in pixels) for box rendering (defaults to {})'.format(
+              DEFAULT_BOX_THICKNESS)))
+    
+    parser.add_argument(
+        '--box_expansion',
+        type=int,
+        default=DEFAULT_BOX_EXPANSION,
+        help=('Number of pixels to expand boxes by (defaults to {})'.format(
+              DEFAULT_BOX_EXPANSION)))
+        
     if len(sys.argv[1:]) == 0:
         parser.print_help()
         parser.exit()
 
     args = parser.parse_args()
 
-    assert os.path.exists(args.detector_file), 'detector file {} does not exist'.format(args.detector_file)
-    assert 0.0 < args.threshold <= 1.0, 'Confidence threshold needs to be between 0 and 1'  # Python chained comparison
+    assert os.path.exists(args.detector_file), 'detector file {} does not exist'.format(
+        args.detector_file)
+    assert 0.0 < args.threshold <= 1.0, 'Confidence threshold needs to be between 0 and 1'
 
     if args.image_file:
         image_file_names = [args.image_file]
@@ -456,7 +519,10 @@ def main():
                           image_file_names=image_file_names,
                           output_dir=args.output_dir,
                           render_confidence_threshold=args.threshold,
-                          crop_images=args.crop)
+                          box_thickness=args.box_thickness,
+                          box_expansion=args.box_expansion,                          
+                          crop_images=args.crop,
+                          image_size=args.image_size)
 
 
 if __name__ == '__main__':

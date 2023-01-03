@@ -1,6 +1,6 @@
 # Camera trap batch processing API user guide
 
-Though most of our users either use the [MegaDetector](https://github.com/Microsoft/CameraTraps#megadetector) model directly or work with us to run MegaDetector on the cloud, we also offer an open-source reference implementation for a an API that processes a large quantity of camera trap images, to support  a variety of online scenarios. The output is most helpful for separating empty from non-empty images based on a detector confidence threshold that you select, and putting bounding boxes around animals, people, and vehicles to help manual review proceed more quickly.  If you are interested in setting up an endpoint to process very small numbers of images for real-time applications (e.g. for anti-poaching applications), see the source for our [real-time camera trap image processing API](https://aiforearth.portal.azure-api.net/docs/services/ai-for-earth-camera-trap-detection-api/).
+Though most of our users either use the [MegaDetector](https://github.com/Microsoft/CameraTraps#megadetector) model directly or work with us to run MegaDetector on the cloud, we also offer an open-source reference implementation for a an API that processes a large quantity of camera trap images, to support  a variety of online scenarios. The output is most helpful for separating empty from non-empty images based on a detector confidence threshold that you select, and putting bounding boxes around animals, people, and vehicles to help manual review proceed more quickly.  If you are interested in setting up an endpoint to process very small numbers of images for real-time applications (e.g. for anti-poaching applications), see the source for our [real-time camera trap image processing API](https://github.com/microsoft/CameraTraps/tree/main/api/synchronous).
 
 With the batch processing API, you can process a batch of up to a few million images in one request to the API. If in addition you have some images that are labeled, we can evaluate the performance of the MegaDetector on your labeled images (see [Post-processing tools](#post-processing-tools)).
 
@@ -233,7 +233,7 @@ Example output with both detection and classification results:
     },
     "images": [
         {
-            "file": "path/from/base/dir/image1.jpg",
+            "file": "path/from/base/dir/image_with_animal.jpg",
             "meta": "optional free-text metadata",
             "max_detection_conf": 0.926,
             "detections": [
@@ -255,13 +255,13 @@ Example output with both detection and classification results:
             ]
         },
         {
-            "file": "/path/from/base/dir/image2.jpg",
+            "file": "/path/from/base/dir/empty_image.jpg",
             "meta": "",
             "max_detection_conf": 0,
             "detections": []
         },
         {
-            "file": "/path/from/base/dir2/corrupted.jpg",
+            "file": "/path/from/base/dir2/corrupted_image.jpg",
             "failure": "Failure image access"
         }
     ]
@@ -298,8 +298,6 @@ The detection category `category` can be interpreted using the `detection_catego
 Detection categories not listed here are allowed by this format specification, but should be treated as "no detection".
 
 When the detector model detects no animal (or person or vehicle), the confidence `conf` is shown as 0.0 (not confident that there is an object of interest) and the `detections` field is an empty list.
-
-All detections above the confidence threshold of 0.1 are recorded in the output file.
 
 
 ##### Classifier outputs

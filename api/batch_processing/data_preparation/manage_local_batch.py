@@ -12,6 +12,7 @@
 import json
 import os
 import stat
+import time
 
 import humanfriendly
 
@@ -20,6 +21,9 @@ from tqdm import tqdm
 # from ai4eutils
 import ai4e_azure_utils 
 import path_utils
+
+from detection.run_detector_batch import load_and_run_detector_batch, write_results_to_file
+from detection.run_detector import DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD
 
 from api.batch_processing.postprocessing.postprocess_batch_results import (
     PostProcessingOptions, process_batch_results)
@@ -42,18 +46,38 @@ default_gpu_number = 0
 
 quiet_mode = True
 
+# Specify a target image size when running MD... strongly recommended to leave this at "None"
+image_size = None
+
 # Only relevant when running on CPU
 ncores = 1
+
+# OS-specific script line continuation character
+slcc = '\\'
+
+# OS-specific script comment character
+scc = '#' 
+
+if os.name == 'nt':
+    slcc = '^'
+    scc = 'REM'
 
 
 #%% Constants I set per script
 
-input_path = os.path.expanduser('~/data/organization/2021-12-24')
+input_path = '/datadrive/organization/data'
 
 organization_name_short = 'organization'
-# job_date = '2022-01-01'
-job_date = None
+job_date = None # '2022-12-02'
 assert job_date is not None and organization_name_short != 'organization'
+
+# Optional descriptor
+job_tag = None
+
+if job_tag is None:
+    job_description_string = ''
+else:
+    job_description_string = '-' + job_tag
 
 model_file = os.path.expanduser('~/models/camera_traps/megadetector/md_v5.0.0/md_v5a.0.0.pt')
 # model_file = os.path.expanduser('~/models/camera_traps/megadetector/md_v5.0.0/md_v5b.0.0.pt')
@@ -73,17 +97,16 @@ else:
 
 checkpoint_frequency = 10000
 
-base_task_name = organization_name_short + '-' + job_date + '-' + get_detector_version_from_filename(model_file)
+base_task_name = organization_name_short + '-' + job_date + job_description_string + '-' + get_detector_version_from_filename(model_file)
 base_output_folder_name = os.path.join(postprocessing_base,organization_name_short)
 os.makedirs(base_output_folder_name,exist_ok=True)
 
 
 #%% Derived variables, path setup
 
-# local folders
 filename_base = os.path.join(base_output_folder_name, base_task_name)
 combined_api_output_folder = os.path.join(filename_base, 'combined_api_outputs')
-postprocessing_output_folder = os.path.join(filename_base, 'postprocessing')
+postprocessing_output_folder = os.path.join(filename_base, 'preview')
 
 os.makedirs(filename_base, exist_ok=True)
 os.makedirs(combined_api_output_folder, exist_ok=True)
@@ -92,6 +115,8 @@ os.makedirs(postprocessing_output_folder, exist_ok=True)
 if input_path.endswith('/'):
     input_path = input_path[0:-1]
 
+print('Output folder:\n{}'.format(filename_base))
+
 
 #%% Enumerate files
 
@@ -99,6 +124,24 @@ all_images = path_utils.find_images(input_path,recursive=True)
 
 print('Enumerated {} image files in {}'.format(len(all_images),input_path))
 
+if False:
+
+    pass 
+    
+    #%% Load files from prior enumeration
+    
+    import re    
+    chunk_files = os.listdir(filename_base)
+    pattern = re.compile('chunk\d+.json')
+    chunk_files = [fn for fn in chunk_files if pattern.match(fn)]
+    all_images = []
+    for fn in chunk_files:
+        with open(os.path.join(filename_base,fn),'r') as f:
+            chunk = json.load(f)
+            assert isinstance(chunk,list)
+            all_images.extend(chunk)
+    print('Loaded {} image files from chunks in {}'.format(len(all_images),filename_base))
+    
 
 #%% Divide images into chunks 
 
@@ -168,9 +211,13 @@ for i_task,task in enumerate(task_info):
     if quiet_mode:
         quiet_string = '--quiet'
 
+    image_size_string = ''
+    if image_size is not None:
+        image_size_string = '--image_size {}'.format(image_size)
+        
     # Generate the script to run MD
         
-    cmd = f'{cuda_string} python run_detector_batch.py "{model_file}" "{chunk_file}" "{output_fn}" {checkpoint_frequency_string} {checkpoint_path_string} {use_image_queue_string} {ncores_string} {quiet_string}'
+    cmd = f'{cuda_string} python run_detector_batch.py "{model_file}" "{chunk_file}" "{output_fn}" {checkpoint_frequency_string} {checkpoint_path_string} {use_image_queue_string} {ncores_string} {quiet_string} {image_size_string}'
     
     cmd_file = os.path.join(filename_base,'run_chunk_{}_gpu_{}.sh'.format(str(i_task).zfill(2),
                             str(gpu_number).zfill(2)))
@@ -203,9 +250,65 @@ for i_task,task in enumerate(task_info):
 
 #%% Run the tasks
 
-# Prefer to run manually
+"""
+I strongly prefer to manually run the scripts we just generated, but this cell demonstrates
+how one would invoke run_detector_batch programmatically.  Normally when I run manually on 
+a multi-GPU machine, I run the scripts in N separate shells, one for each GPU.  This programmatic
+approach does not yet know how to do something like that, so all chunks will run serially.
+This is a no-op if you're on a single-GPU machine.
+"""
 
+if False:
+    
+    #%%% Run the tasks (commented out)
 
+    # i_task = 0; task = task_info[i_task]
+    for i_task,task in enumerate(task_info):
+    
+        chunk_file = task['input_file']
+        output_fn = task['output_file']
+        
+        checkpoint_filename = chunk_file.replace('.json','_checkpoint.json')
+        
+        if json_threshold is not None:
+            confidence_threshold = json_threshold
+        else:
+            confidence_threshold = DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD
+            
+        if checkpoint_frequency is not None and checkpoint_frequency > 0:
+            cp_freq_arg = checkpoint_frequency
+        else:
+            cp_freq_arg = -1
+            
+        start_time = time.time()
+        results = load_and_run_detector_batch(model_file=model_file, 
+                                              image_file_names=chunk_file, 
+                                              checkpoint_path=checkpoint_filename, 
+                                              confidence_threshold=confidence_threshold,
+                                              checkpoint_frequency=cp_freq_arg, 
+                                              results=None,
+                                              n_cores=ncores, 
+                                              use_image_queue=use_image_queue,
+                                              quiet=quiet_mode,
+                                              image_size=image_size)        
+        elapsed = time.time() - start_time
+        
+        print('Task {}: finished inference for {} images in {}'.format(
+            i_task, len(results),humanfriendly.format_timespan(elapsed)))
+
+        # This will write absolute paths to the file, we'll fix this later
+        write_results_to_file(results, output_fn, detector_file=model_file)
+
+        if checkpoint_frequency is not None and checkpoint_frequency > 0:
+            if os.path.isfile(checkpoint_filename):                
+                os.remove(checkpoint_filename)
+                print('Deleted checkpoint file {}'.format(checkpoint_filename))
+                
+    # ...for each chunk
+    
+# ...if False
+
+    
 #%% Load results, look for failed or missing images in each task
 
 n_total_failures = 0
@@ -270,15 +373,17 @@ for i_task,task in enumerate(task_info):
     assert task_results['detection_categories'] == combined_results['detection_categories']
     combined_results['images'].extend(copy.deepcopy(task_results['images']))
     
-assert len(combined_results['images']) == len(all_images)
+assert len(combined_results['images']) == len(all_images), \
+    'Expected {} images in combined results, found {}'.format(
+        len(all_images),len(combined_results['images']))
 
 result_filenames = [im['file'] for im in combined_results['images']]
 assert len(combined_results['images']) == len(set(result_filenames))
 
 # im = combined_results['images'][0]
 for im in combined_results['images']:
-    assert im['file'].startswith(input_path + '/')
-    im['file']= im['file'].replace(input_path + '/','',1)    
+    assert im['file'].startswith(input_path + os.path.sep)
+    im['file']= im['file'].replace(input_path + os.path.sep,'',1)    
     
 combined_api_output_file = os.path.join(
     combined_api_output_folder,
@@ -288,55 +393,6 @@ with open(combined_api_output_file,'w') as f:
     json.dump(combined_results,f,indent=2)
 
 print('Wrote results to {}'.format(combined_api_output_file))
-
-
-#%% Compare results files for different model versions (or before/after RDE)
-
-import itertools
-
-from api.batch_processing.postprocessing.compare_batch_results import (
-    BatchComparisonOptions,PairwiseBatchComparisonOptions,compare_batch_results)
-
-options = BatchComparisonOptions()
-
-options.job_name = organization_name_short
-options.output_folder = os.path.join(postprocessing_output_folder,'model_comparison')
-options.image_folder = input_path
-
-options.pairwise_options = []
-
-filenames = [
-    '/postprocessing/organization/mdv4_results.json',
-    '/postprocessing/organization/mdv5a_results.json',
-    '/postprocessing/organization/mdv5b_results.json'    
-    ]
-
-detection_thresholds = [0.7,0.15,0.15]
-# rendering_thresholds = [0.5,0.1,0.1]
-rendering_thresholds = [(x*0.6666) for x in detection_thresholds]
-
-for i, j in itertools.combinations([0,1,2],2):
-        
-    pairwise_options = PairwiseBatchComparisonOptions()
-    
-    pairwise_options.results_filename_a = filenames[i]
-    pairwise_options.results_filename_b = filenames[j]
-    
-    pairwise_options.rendering_confidence_threshold_a = rendering_thresholds[i]
-    pairwise_options.rendering_confidence_threshold_b = rendering_thresholds[j]
-    
-    pairwise_options.detection_thresholds_a = {'animal':detection_thresholds[i],
-                                               'person':detection_thresholds[i],
-                                               'vehicle':detection_thresholds[i]}
-    pairwise_options.detection_thresholds_b = {'animal':detection_thresholds[j],
-                                               'person':detection_thresholds[j],
-                                               'vehicle':detection_thresholds[j]}
-    options.pairwise_options.append(pairwise_options)
-
-results = compare_batch_results(options)
-
-from path_utils import open_file # from ai4eutils
-open_file(results.html_output_file)
 
 
 #%% Post-processing (no ground truth)
@@ -375,24 +431,6 @@ html_output_file = ppresults.output_html_file
 path_utils.open_file(html_output_file)
 
 
-#%% Merge in high-confidence detections from another results file
-
-from api.batch_processing.postprocessing.merge_detections import MergeDetectionsOptions,merge_detections
-
-source_files = ['']
-target_file = ''
-output_file = target_file.replace('.json','_merged.json')
-
-options = MergeDetectionsOptions()
-options.max_detection_size = 1.0
-options.target_confidence_threshold = 0.25
-options.categories_to_include = [1]
-options.source_confidence_thresholds = [0.2]
-merge_detections(source_files, target_file, output_file, options)
-
-merged_detections_file = output_file
-
-
 #%% RDE (sample directory collapsing)
 
 def remove_overflow_folders(relativePath):
@@ -422,8 +460,18 @@ if False:
     with open(combined_api_output_file,'r') as f:
         d = json.load(f)
     image_filenames = [im['file'] for im in d['images']]
+    
+    #%%
+    
+    dirNames = set()
+    
+    # relativePath = image_filenames[0]
     for relativePath in tqdm(image_filenames):
-        remove_overflow_folders(relativePath)
+        dirName = remove_overflow_folders(relativePath)
+        dirNames.add(dirName)
+        
+    dirNames = list(dirNames)
+    dirNames.sort()
 
 
 #%% Repeat detection elimination, phase 1
@@ -443,6 +491,9 @@ options.occurrenceThreshold = 10
 options.maxSuspiciousDetectionSize = 0.2
 # options.minSuspiciousDetectionSize = 0.05
 
+# options.parallelizationUsesThreads = True
+# options.nWorkers = 10
+
 # This will cause a very light gray box to get drawn around all the detections
 # we're *not* considering as suspicious.
 options.bRenderOtherDetections = True
@@ -460,7 +511,7 @@ rde_string = 'rde_{:.2f}_{:.2f}_{}_{:.2f}'.format(
     options.confidenceMin, options.iouThreshold,
     options.occurrenceThreshold, options.maxSuspiciousDetectionSize)
 options.outputBase = os.path.join(filename_base, rde_string + '_task_{}'.format(task_index))
-options.filenameReplacements = {'':''}
+options.filenameReplacements = None # {'':''}
 
 # Exclude people and vehicles from RDE
 # options.excludeClasses = [2,3]
@@ -590,10 +641,9 @@ commands = []
 # commands.append('cd CameraTraps/classification\n')
 # commands.append('conda activate cameratraps-classifier\n')
 
-
 ##%% Crop images
 
-commands.append('\n### Cropping ###\n')
+commands.append('\n' + scc + ' Cropping ' + scc + '\n')
 
 # fn = input_files[0]
 for fn in input_files:
@@ -601,25 +651,25 @@ for fn in input_files:
     input_file_path = fn
     crop_cmd = ''
     
-    crop_comment = '\n# Cropping {}\n'.format(fn)
+    crop_comment = '\n' + scc + ' Cropping {}\n'.format(fn)
     crop_cmd += crop_comment
     
-    crop_cmd += "python crop_detections.py \\\n" + \
-    	 input_file_path + ' \\\n' + \
-         crop_path + ' \\\n' + \
-         '--images-dir "' + image_base + '"' + ' \\\n' + \
-         '--threshold "' + threshold_str + '"' + ' \\\n' + \
-         '--square-crops ' + ' \\\n' + \
-         '--threads "' + n_threads_str + '"' + ' \\\n' + \
-         '--logdir "' + logdir + '"' + ' \\\n' + \
-         '\n'
+    crop_cmd += "python crop_detections.py " + slcc + "\n" + \
+    	 ' ' + input_file_path + ' ' + slcc + '\n' + \
+         ' ' + crop_path + ' ' + slcc + '\n' + \
+         ' ' + '--images-dir "' + image_base + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--threshold "' + threshold_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--square-crops ' + ' ' + slcc + '\n' + \
+         ' ' + '--threads "' + n_threads_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--logdir "' + logdir + '"' + '\n' + \
+         ' ' + '\n'
     crop_cmd = '{}'.format(crop_cmd)
     commands.append(crop_cmd)
 
 
 ##%% Run classifier
 
-commands.append('\n### Classifying ###\n')
+commands.append('\n' + scc + ' Classifying ' + scc + '\n')
 
 # fn = input_files[0]
 for fn in input_files:
@@ -629,21 +679,21 @@ for fn in input_files:
     
     classify_cmd = ''
     
-    classify_comment = '\n# Classifying {}\n'.format(fn)
+    classify_comment = '\n' + scc + ' Classifying {}\n'.format(fn)
     classify_cmd += classify_comment
     
-    classify_cmd += "python run_classifier.py \\\n" + \
-    	 checkpoint_path + ' \\\n' + \
-         crop_path + ' \\\n' + \
-         classifier_output_path + ' \\\n' + \
-         '--detections-json "' + input_file_path + '"' + ' \\\n' + \
-         '--classifier-categories "' + classifier_categories_path + '"' + ' \\\n' + \
-         '--image-size "' + image_size_str + '"' + ' \\\n' + \
-         '--batch-size "' + batch_size_str + '"' + ' \\\n' + \
-         '--num-workers "' + num_workers_str + '"' + ' \\\n'
+    classify_cmd += "python run_classifier.py " + slcc + "\n" + \
+    	 ' ' + checkpoint_path + ' ' + slcc + '\n' + \
+         ' ' + crop_path + ' ' + slcc + '\n' + \
+         ' ' + classifier_output_path + ' ' + slcc + '\n' + \
+         ' ' + '--detections-json "' + input_file_path + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--classifier-categories "' + classifier_categories_path + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--image-size "' + image_size_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--batch-size "' + batch_size_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--num-workers "' + num_workers_str + '"' + ' ' + slcc + '\n'
     
     if device_id is not None:
-        classify_cmd += '--device {}'.format(device_id)
+        classify_cmd += ' ' + '--device {}'.format(device_id)
         
     classify_cmd += '\n\n'        
     classify_cmd = '{}'.format(classify_cmd)
@@ -652,7 +702,7 @@ for fn in input_files:
 
 ##%% Remap classifier outputs
 
-commands.append('\n### Remapping ###\n')
+commands.append('\n' + scc + ' Remapping ' + scc + '\n')
 
 # fn = input_files[0]
 for fn in input_files:
@@ -668,14 +718,14 @@ for fn in input_files:
                                        
     remap_cmd = ''
     
-    remap_comment = '\n# Remapping {}\n'.format(fn)
+    remap_comment = '\n' + scc + ' Remapping {}\n'.format(fn)
     remap_cmd += remap_comment
     
-    remap_cmd += "python aggregate_classifier_probs.py \\\n" + \
-        classifier_output_path + ' \\\n' + \
-        '--target-mapping "' + target_mapping_path + '"' + ' \\\n' + \
-        '--output-csv "' + classifier_output_path_remapped + '"' + ' \\\n' + \
-        '--output-label-index "' + output_label_index + '"' + ' \\\n' + \
+    remap_cmd += "python aggregate_classifier_probs.py " + slcc + "\n" + \
+        ' ' + classifier_output_path + ' ' + slcc + '\n' + \
+        ' ' + '--target-mapping "' + target_mapping_path + '"' + ' ' + slcc + '\n' + \
+        ' ' + '--output-csv "' + classifier_output_path_remapped + '"' + ' ' + slcc + '\n' + \
+        ' ' + '--output-label-index "' + output_label_index + '"' \
         '\n'
      
     remap_cmd = '{}'.format(remap_cmd)
@@ -684,7 +734,7 @@ for fn in input_files:
 
 ##%% Merge classification and detection outputs
 
-commands.append('\n### Merging ###\n')
+commands.append('\n' + scc + ' Merging ' + scc + '\n')
 
 # fn = input_files[0]
 for fn in input_files:
@@ -704,20 +754,21 @@ for fn in input_files:
         final_output_suffix)
     final_output_path = final_output_path.replace('_detections','')
     final_output_path = final_output_path.replace('_crops','')
+    final_output_path_mc = final_output_path
     
     merge_cmd = ''
     
-    merge_comment = '\n# Merging {}\n'.format(fn)
+    merge_comment = '\n' + scc + ' Merging {}\n'.format(fn)
     merge_cmd += merge_comment
     
-    merge_cmd += "python merge_classification_detection_output.py \\\n" + \
-    	 classifier_output_path_remapped + ' \\\n' + \
-         output_label_index + ' \\\n' + \
-         '--output-json "' + final_output_path + '"' + ' \\\n' + \
-         '--detection-json "' + input_file_path + '"' + ' \\\n' + \
-         '--classifier-name "' + classifier_name + '"' + ' \\\n' + \
-         '--threshold "' + classification_threshold_str + '"' + ' \\\n' + \
-         '--typical-confidence-threshold "' + typical_classification_threshold_str + '"' + ' \\\n' + \
+    merge_cmd += "python merge_classification_detection_output.py " + slcc + "\n" + \
+    	 ' ' + classifier_output_path_remapped + ' ' + slcc + '\n' + \
+         ' ' + output_label_index + ' ' + slcc + '\n' + \
+         ' ' + '--output-json "' + final_output_path + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--detection-json "' + input_file_path + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--classifier-name "' + classifier_name + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--threshold "' + classification_threshold_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--typical-confidence-threshold "' + typical_classification_threshold_str + '"' + '\n' + \
          '\n'
     merge_cmd = '{}'.format(merge_cmd)
     commands.append(merge_cmd)
@@ -747,7 +798,7 @@ input_files = [input_filename]
 image_base = input_path
 crop_path = os.path.join(os.path.expanduser('~/crops'),job_name + '_crops')
 output_base = combined_api_output_folder
-device_id = 0
+device_id = 1
 
 output_file = os.path.join(filename_base,'run_{}_'.format(classifier_name_short) + job_name +  '.sh')
 
@@ -784,7 +835,7 @@ commands = []
 
 ##%% Crop images
     
-commands.append('\n### Cropping ###\n')
+commands.append('\n' + scc + ' Cropping ' + scc + '\n')
 
 # fn = input_files[0]
 for fn in input_files:
@@ -792,17 +843,17 @@ for fn in input_files:
     input_file_path = fn
     crop_cmd = ''
     
-    crop_comment = '\n# Cropping {}\n'.format(fn)
+    crop_comment = '\n' + scc + ' Cropping {}\n'.format(fn)
     crop_cmd += crop_comment
     
-    crop_cmd += "python crop_detections.py \\\n" + \
-    	 input_file_path + ' \\\n' + \
-         crop_path + ' \\\n' + \
-         '--images-dir "' + image_base + '"' + ' \\\n' + \
-         '--threshold "' + threshold_str + '"' + ' \\\n' + \
-         '--square-crops ' + ' \\\n' + \
-         '--threads "' + n_threads_str + '"' + ' \\\n' + \
-         '--logdir "' + logdir + '"' + ' \\\n' + \
+    crop_cmd += "python crop_detections.py " + slcc + "\n" + \
+    	 ' ' + input_file_path + ' ' + slcc + '\n' + \
+         ' ' + crop_path + ' ' + slcc + '\n' + \
+         ' ' + '--images-dir "' + image_base + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--threshold "' + threshold_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--square-crops ' + ' ' + slcc + '\n' + \
+         ' ' + '--threads "' + n_threads_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--logdir "' + logdir + '"' + '\n' + \
          '\n'
     crop_cmd = '{}'.format(crop_cmd)
     commands.append(crop_cmd)
@@ -810,7 +861,7 @@ for fn in input_files:
 
 ##%% Run classifier
 
-commands.append('\n### Classifying ###\n')
+commands.append('\n' + scc + ' Classifying ' + scc + '\n')
 
 # fn = input_files[0]
 for fn in input_files:
@@ -820,21 +871,21 @@ for fn in input_files:
     
     classify_cmd = ''
     
-    classify_comment = '\n# Classifying {}\n'.format(fn)
+    classify_comment = '\n' + scc + ' Classifying {}\n'.format(fn)
     classify_cmd += classify_comment
     
-    classify_cmd += "python run_classifier.py \\\n" + \
-    	 checkpoint_path + ' \\\n' + \
-         crop_path + ' \\\n' + \
-         classifier_output_path + ' \\\n' + \
-         '--detections-json "' + input_file_path + '"' + ' \\\n' + \
-         '--classifier-categories "' + classifier_categories_path + '"' + ' \\\n' + \
-         '--image-size "' + image_size_str + '"' + ' \\\n' + \
-         '--batch-size "' + batch_size_str + '"' + ' \\\n' + \
-         '--num-workers "' + num_workers_str + '"' + ' \\\n'
+    classify_cmd += "python run_classifier.py " + slcc + "\n" + \
+    	 ' ' + checkpoint_path + ' ' + slcc + '\n' + \
+         ' ' + crop_path + ' ' + slcc + '\n' + \
+         ' ' + classifier_output_path + ' ' + slcc + '\n' + \
+         ' ' + '--detections-json "' + input_file_path + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--classifier-categories "' + classifier_categories_path + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--image-size "' + image_size_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--batch-size "' + batch_size_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--num-workers "' + num_workers_str + '"' + ' ' + slcc + '\n'
     
     if device_id is not None:
-        classify_cmd += '--device {}'.format(device_id)
+        classify_cmd += ' ' + '--device {}'.format(device_id)
         
     classify_cmd += '\n\n'    
     classify_cmd = '{}'.format(classify_cmd)
@@ -843,7 +894,7 @@ for fn in input_files:
 
 ##%% Merge classification and detection outputs
 
-commands.append('\n### Merging ###\n')
+commands.append('\n' + scc + ' Merging ' + scc + '\n')
 
 # fn = input_files[0]
 for fn in input_files:
@@ -860,17 +911,17 @@ for fn in input_files:
     
     merge_cmd = ''
     
-    merge_comment = '\n# Merging {}\n'.format(fn)
+    merge_comment = '\n' + scc + ' Merging {}\n'.format(fn)
     merge_cmd += merge_comment
     
-    merge_cmd += "python merge_classification_detection_output.py \\\n" + \
-    	 classifier_output_path + ' \\\n' + \
-         classifier_categories_path + ' \\\n' + \
-         '--output-json "' + final_output_path_ic + '"' + ' \\\n' + \
-         '--detection-json "' + input_file_path + '"' + ' \\\n' + \
-         '--classifier-name "' + classifier_name + '"' + ' \\\n' + \
-         '--threshold "' + classification_threshold_str + '"' + ' \\\n' + \
-         '--typical-confidence-threshold "' + typical_classification_threshold_str + '"' + ' \\\n' + \
+    merge_cmd += "python merge_classification_detection_output.py " + slcc + "\n" + \
+    	 ' ' + classifier_output_path + ' ' + slcc + '\n' + \
+         ' ' + classifier_categories_path + ' ' + slcc + '\n' + \
+         ' ' + '--output-json "' + final_output_path_ic + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--detection-json "' + input_file_path + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--classifier-name "' + classifier_name + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--threshold "' + classification_threshold_str + '"' + ' ' + slcc + '\n' + \
+         ' ' + '--typical-confidence-threshold "' + typical_classification_threshold_str + '"' + '\n' + \
          '\n'
     merge_cmd = '{}'.format(merge_cmd)
     commands.append(merge_cmd)
@@ -902,8 +953,11 @@ os.chmod(output_file, st.st_mode | stat.S_IEXEC)
 # "other" class.
 
 classification_detection_files = [    
-    "xyz","abc"
+    final_output_path_mc,
+    final_output_path_ic    
     ]
+
+assert all([os.path.isfile(fn) for fn in classification_detection_files])
 
 # Only count detections with a classification confidence threshold above
 # *classification_confidence_threshold*, which in practice means we're only
@@ -916,6 +970,8 @@ classification_detection_files = [
 #
 # Optionally treat some classes as particularly unreliable, typically used to overwrite an 
 # "other" class.
+
+smoothed_classification_files = []
 
 for final_output_path in classification_detection_files:
 
@@ -969,9 +1025,6 @@ for final_output_path in classification_detection_files:
     # im = d['images'][0]    
     for im in tqdm(d['images']):
         
-        if 'Pronghorn Test Dataset/Drinker/SED/I__00030.JPG' in im['file']:
-            pass
-            
         if 'detections' not in im or im['detections'] is None or len(im['detections']) == 0:
             continue
         
@@ -998,7 +1051,9 @@ for final_output_path in classification_detection_files:
         
         # Handle a quirky special case: if the most common category is "other" and 
         # it's "tied" with the second-most-common category, swap them
-        if (len(keys) > 1) and (keys[0] in other_category_ids) and (keys[1] not in other_category_ids) and\
+        if (len(keys) > 1) and \
+            (keys[0] in other_category_ids) and \
+            (keys[1] not in other_category_ids) and \
             (category_to_count[keys[0]] == category_to_count[keys[1]]):
                 keys[1], keys[0] = keys[0], keys[1]
         
@@ -1053,8 +1108,8 @@ for final_output_path in classification_detection_files:
             continue
         
         # At this point, we know we have a dominant category; change all other above-threshold
-        # classifications to that category.  That category may have been "other", in which case we may have
-        # already made the relevant changes.
+        # classifications to that category.  That category may have been "other", in which
+        # case we may have already made the relevant changes.
         
         n_detections_flipped_this_image = 0
         
@@ -1092,19 +1147,16 @@ for final_output_path in classification_detection_files:
         json.dump(d,f,indent=2)
         
     print('Wrote results to:\n{}'.format(classifier_output_path_within_image_smoothing))
+    smoothed_classification_files.append(classifier_output_path_within_image_smoothing)
 
 # ...for each file we want to smooth
 
 
 #%% Post-processing (post-classification)
 
-classification_detection_files = [    
-    "/home/user/postprocessing/organization/organization-2022-02-19/combined_api_outputs/organization-2022-02-19_megaclassifier.json",
-    "/home/user/postprocessing/organization/organization-2022-02-19/combined_api_outputs/organization-2022-02-19_idfgclassifier.json"
-    ]
+classification_detection_files = smoothed_classification_files
     
-for fn in classification_detection_files:
-    assert os.path.isfile(fn)
+assert all([os.path.isfile(fn) for fn in classification_detection_files])
     
 # classification_detection_file = classification_detection_files[1]
 for classification_detection_file in classification_detection_files:
@@ -1120,7 +1172,7 @@ for classification_detection_file in classification_detection_files:
     options.ground_truth_json_file = None
     options.separate_detections_by_category = True
     
-    folder_token = classification_detection_file.split('/')[-1].replace('classifier.json','')
+    folder_token = classification_detection_file.split(os.path.sep)[-1].replace('classifier.json','')
     
     output_base = os.path.join(postprocessing_output_folder, folder_token + \
         base_task_name + '_{:.3f}'.format(options.confidence_threshold))
@@ -1133,21 +1185,178 @@ for classification_detection_file in classification_detection_files:
     path_utils.open_file(ppresults.output_html_file)
 
 
+#%% Zip .json files
+
+json_files = os.listdir(combined_api_output_folder)
+json_files = [fn for fn in json_files if fn.endswith('.json')]
+json_files = [os.path.join(combined_api_output_folder,fn) for fn in json_files]
+
+import zipfile
+from zipfile import ZipFile
+
+output_path = combined_api_output_folder
+
+def zip_json_file(fn):
+    
+    assert fn.endswith('.json')
+    basename = os.path.basename(fn)
+    zip_file_name = os.path.join(output_path,basename + '.zip')
+    print('Zipping {} to {}'.format(fn,zip_file_name))
+    
+    with ZipFile(zip_file_name,'w',zipfile.ZIP_DEFLATED) as zipf:
+        zipf.write(fn,arcname=basename,compresslevel=9,compress_type=zipfile.ZIP_DEFLATED)
+
+from multiprocessing.pool import ThreadPool
+pool = ThreadPool(len(json_files))
+with tqdm(total=len(json_files)) as pbar:
+    for i,_ in enumerate(pool.imap_unordered(zip_json_file,json_files)):
+        pbar.update()
+
+
+#%% 99.9% of jobs end here
+
+# Everything after this is run ad hoc and/or requires some manual editing.
+
+
+#%% Compare results files for different model versions (or before/after RDE)
+
+import itertools
+
+from api.batch_processing.postprocessing.compare_batch_results import (
+    BatchComparisonOptions,PairwiseBatchComparisonOptions,compare_batch_results)
+
+options = BatchComparisonOptions()
+
+options.job_name = organization_name_short
+options.output_folder = os.path.join(postprocessing_output_folder,'model_comparison')
+options.image_folder = input_path
+
+options.pairwise_options = []
+
+filenames = [
+    '/postprocessing/organization/mdv4_results.json',
+    '/postprocessing/organization/mdv5a_results.json',
+    '/postprocessing/organization/mdv5b_results.json'    
+    ]
+
+detection_thresholds = [0.7,0.15,0.15]
+
+assert len(detection_thresholds) == len(filenames)
+
+rendering_thresholds = [(x*0.6666) for x in detection_thresholds]
+
+# Choose all pairwise combinations of the files in [filenames]
+for i, j in itertools.combinations(list(range(0,len(filenames))),2):
+        
+    pairwise_options = PairwiseBatchComparisonOptions()
+    
+    pairwise_options.results_filename_a = filenames[i]
+    pairwise_options.results_filename_b = filenames[j]
+    
+    pairwise_options.rendering_confidence_threshold_a = rendering_thresholds[i]
+    pairwise_options.rendering_confidence_threshold_b = rendering_thresholds[j]
+    
+    pairwise_options.detection_thresholds_a = {'animal':detection_thresholds[i],
+                                               'person':detection_thresholds[i],
+                                               'vehicle':detection_thresholds[i]}
+    pairwise_options.detection_thresholds_b = {'animal':detection_thresholds[j],
+                                               'person':detection_thresholds[j],
+                                               'vehicle':detection_thresholds[j]}
+    options.pairwise_options.append(pairwise_options)
+
+results = compare_batch_results(options)
+
+from path_utils import open_file # from ai4eutils
+open_file(results.html_output_file)
+
+
+#%% Merge in high-confidence detections from another results file
+
+from api.batch_processing.postprocessing.merge_detections import MergeDetectionsOptions,merge_detections
+
+source_files = ['']
+target_file = ''
+output_file = target_file.replace('.json','_merged.json')
+
+options = MergeDetectionsOptions()
+options.max_detection_size = 1.0
+options.target_confidence_threshold = 0.25
+options.categories_to_include = [1]
+options.source_confidence_thresholds = [0.2]
+merge_detections(source_files, target_file, output_file, options)
+
+merged_detections_file = output_file
+
+
 #%% Create a new category for large boxes
 
 from api.batch_processing.postprocessing import categorize_detections_by_size
 
-options = categorize_detections_by_size.SizeCategorizationOptions()
+size_options = categorize_detections_by_size.SizeCategorizationOptions()
 
 # This is a size threshold, not a confidence threshold
-options.threshold = 0.85
+size_options.threshold = 0.9
+size_options.output_category_name = 'large_detections'
+# size_options.categories_to_separate = [3]
+size_options.measurement = 'size' # 'width'
 
-input_file = r"g:\organization\file.json"
-size_separated_file = input_file.replace('.json','-size-separated-{}.json'.format(options.threshold))
-d = categorize_detections_by_size.categorize_detections_by_size(input_file,size_separated_file,options)
+input_file = filtered_output_filename
+size_separated_file = input_file.replace('.json','-size-separated-{}.json'.format(
+    size_options.threshold))
+d = categorize_detections_by_size.categorize_detections_by_size(input_file,size_separated_file,
+                                                                size_options)
 
 
-#%% Subsetting
+#%% Preview large boxes
+
+output_base_large_boxes = os.path.join(postprocessing_output_folder, 
+    base_task_name + '_{}_{:.3f}_large_boxes'.format(rde_string, options.confidence_threshold))    
+os.makedirs(output_base_large_boxes, exist_ok=True)
+print('Processing post-RDE, post-size-separation to {}'.format(output_base_large_boxes))
+
+options.api_output_file = size_separated_file
+options.output_dir = output_base_large_boxes
+
+ppresults = process_batch_results(options)
+html_output_file = ppresults.output_html_file
+path_utils.open_file(html_output_file)
+
+
+#%% .json splitting
+
+data = None
+
+from api.batch_processing.postprocessing.subset_json_detector_output import (
+    subset_json_detector_output, SubsetJsonDetectorOutputOptions)
+
+input_filename = filtered_output_filename
+output_base = os.path.join(filename_base,'json_subsets')
+
+if False:
+    if data is None:
+        with open(input_filename) as f:
+            data = json.load(f)
+    print('Data set contains {} images'.format(len(data['images'])))
+
+print('Processing file {} to {}'.format(input_filename,output_base))          
+
+options = SubsetJsonDetectorOutputOptions()
+# options.query = None
+# options.replacement = None
+
+options.split_folders = True
+options.make_folder_relative = True
+
+# Reminder: 'n_from_bottom' with a parameter of zero is the same as 'bottom'
+options.split_folder_mode = 'bottom'  # 'top', 'n_from_top', 'n_from_bottom'
+options.split_folder_param = 0
+options.overwrite_json_files = False
+options.confidence_threshold = 0.01
+
+subset_data = subset_json_detector_output(input_filename, output_base, options, data)
+
+
+#%% Custom splitting/subsetting
 
 data = None
 
@@ -1175,9 +1384,11 @@ for i_folder, folder_name in enumerate(folders):
     options = SubsetJsonDetectorOutputOptions()
     options.confidence_threshold = 0.01
     options.overwrite_json_files = True
-    options.make_folder_relative = True
-    options.query = folder_name + '\\'
+    options.query = folder_name + '/'
 
+    # This doesn't do anything in this case, since we're not splitting folders
+    # options.make_folder_relative = True        
+    
     subset_data = subset_json_detector_output(input_filename, output_filename, options, data)
 
 
@@ -1197,13 +1408,13 @@ options.replacement = ''
 subset_json_detector_output(input_filename,output_filename,options)
 
 
-#%% Folder splitting
+#%% Splitting images into folders
 
 from api.batch_processing.postprocessing.separate_detections_into_folders import (
     separate_detections_into_folders, SeparateDetectionsIntoFoldersOptions)
 
 default_threshold = 0.2
-base_output_folder = r'e:\{}-{}-separated'.format(base_task_name,default_threshold)
+base_output_folder = os.path.expanduser('~/data/{}-{}-separated'.format(base_task_name,default_threshold))
 
 options = SeparateDetectionsIntoFoldersOptions(default_threshold)
 
@@ -1275,3 +1486,80 @@ with open(cmd_file,'w') as f:
 import stat
 st = os.stat(cmd_file)
 os.chmod(cmd_file, st.st_mode | stat.S_IEXEC)
+
+
+#%% End notebook: turn this script into a notebook (how meta!)
+
+import os
+import nbformat as nbf
+
+input_py_file = os.path.expanduser('~/git/CameraTraps/api/batch_processing/data_preparation/manage_local_batch.py')
+assert os.path.isfile(input_py_file)
+output_ipynb_file = input_py_file.replace('.py','.ipynb')
+
+nb_header = '# Managing a local MegaDetector batch'
+
+nb_header += '\n'
+
+nb_header += \
+"""
+This notebook represents an interactive process for running MegaDetector on large batches of images, including typical and optional postprocessing steps.  Everything after "Merge results..." is basically optional, and we typically do a mix of these optional steps, depending on the job.
+
+This notebook is auto-generated from manage_local_batch.py (a cell-delimited .py file that is used the same way, typically in Spyder or VS Code).    
+
+"""
+
+with open(input_py_file,'r') as f:
+    lines = f.readlines()
+
+nb = nbf.v4.new_notebook()
+nb['cells'].append(nbf.v4.new_markdown_cell(nb_header))
+
+i_line = 0
+
+# Exclude everything before the first cell
+while(not lines[i_line].startswith('#%%')):
+    i_line += 1
+
+current_cell = []
+
+def write_code_cell(c):
+    
+    first_non_empty_line = None
+    last_non_empty_line = None
+    
+    for i_code_line,code_line in enumerate(c):
+        if len(code_line.strip()) > 0:
+            if first_non_empty_line is None:
+                first_non_empty_line = i_code_line
+            last_non_empty_line = i_code_line
+            
+    # Remove the first [first_non_empty_lines] from the list
+    c = c[first_non_empty_line:]
+    last_non_empty_line -= first_non_empty_line
+    c = c[:last_non_empty_line+1]
+    
+    nb['cells'].append(nbf.v4.new_code_cell('\n'.join(c)))
+        
+while(True):    
+            
+    line = lines[i_line].rstrip()
+    
+    if 'end notebook' in line.lower():
+        break
+    
+    if lines[i_line].startswith('#%% '):
+        if len(current_cell) > 0:
+            write_code_cell(current_cell)
+            current_cell = []
+        markdown_content = line.replace('#%%','##')
+        nb['cells'].append(nbf.v4.new_markdown_cell(markdown_content))
+    else:
+        current_cell.append(line)
+
+    i_line += 1
+
+# Add the last cell
+write_code_cell(current_cell)
+
+nbf.write(nb,output_ipynb_file)

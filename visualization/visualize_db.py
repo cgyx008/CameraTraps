@@ -47,6 +47,9 @@ class DbVizOptions:
     add_search_links = False
     include_filename_links = False
     
+    box_thickness = 4
+    box_expansion = 0
+    
     # These are mutually exclusive; both are category names, not IDs
     classes_to_exclude = None
     classes_to_include = None
@@ -296,14 +299,20 @@ def process_images(db_path, output_dir, image_base_dir, options=None):
         try:
             original_image = vis_utils.open_image(img_path)
             original_size = original_image.size
-            image = vis_utils.resize_image(original_image, options.viz_size[0], options.viz_size[1])
+            if options.viz_size[0] == -1 and options.viz_size[1] == -1:
+                image = original_image
+            else:
+                image = vis_utils.resize_image(original_image, options.viz_size[0], options.viz_size[1])
         except Exception as e:
             print('Image {} failed to open. Error: {}'.format(img_path, e))
             return False
             
         vis_utils.render_db_bounding_boxes(boxes=bboxes, classes=bboxClasses,
                                            image=image, original_size=original_size,
-                                           label_map=label_map)
+                                           label_map=label_map,
+                                           thickness=options.box_thickness,
+                                           expansion=options.box_expansion)
+        
         image.save(os.path.join(output_dir, 'rendered_images', output_file_name))
         return True
     
