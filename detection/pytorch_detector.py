@@ -39,6 +39,7 @@ class PTDetector:
             except AttributeError:
                 pass
         self.model = PTDetector._load_model(model_path, self.device)
+        self.update_upsample_args()
         if (self.device != 'cpu'):
             print('Sending model to GPU')
             self.model.to(self.device)
@@ -50,6 +51,19 @@ class PTDetector:
         checkpoint = torch.load(model_pt_path, map_location=device)
         model = checkpoint['model'].float().fuse().eval()  # FP32 model
         return model
+
+    def update_upsample_args(self):
+        """Add `recompute_scale_factor` in old version weight"""
+        for n, m in self.model.named_modules():
+            if isinstance(m, torch.nn.Upsample):
+                attr = ''.join(f'[{a}]' if a.isdecimal() else f'.{a}'
+                               for a in n.split('.'))
+                new_m = torch.nn.Upsample(m.size, m.scale_factor,
+                                          m.mode, m.align_corners)
+                for k, v in m.__dict__.items():
+                    setattr(new_m, k, v)
+                exec(f'self.model{attr} = new_m')
+
 
     def generate_detections_one_image(self, img_original, image_id, detection_threshold, image_size=None):
         """Apply the detector to an image.
