@@ -13,7 +13,7 @@ import ct_utils
 
 try:
     # import pre- and post-processing functions from the YOLOv5 repo https://github.com/ultralytics/yolov5
-    from utils.general import non_max_suppression, scale_coords, xyxy2xywh
+    from utils.general import non_max_suppression, scale_boxes, xyxy2xywh
     from utils.augmentations import letterbox
 except ModuleNotFoundError:
     raise ModuleNotFoundError('Could not import YOLOv5 functions.')
@@ -125,7 +125,7 @@ class PTDetector:
             for det in pred:
                 if len(det):
                     # Rescale boxes from img_size to im0 size
-                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], img_original.shape).round()
+                    det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], img_original.shape).round()
 
                     for *xyxy, conf, cls in reversed(det):
                         # normalized center-x, center-y, width and height
