@@ -790,4 +790,4 @@ def detect_dir(root=r'G:\Data\AD\reolink\videos\ReolinkPR_Out_Keen'):
 
 
 if __name__ == '__main__':
-    detect_dir('G:/Data/AD/reolink/videos/2022-08-16_12-20-00')
+    detect_dir(r'W:\ganhao\AD\wd\v03\clean_turkey\images\test')
