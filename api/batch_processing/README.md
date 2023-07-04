@@ -1,6 +1,6 @@
 # Camera trap batch processing API user guide
 
-Though most of our users either use the [MegaDetector](https://github.com/Microsoft/CameraTraps#megadetector) model directly or work with us to run MegaDetector on the cloud, we also offer an open-source reference implementation for a an API that processes a large quantity of camera trap images, to support  a variety of online scenarios. The output is most helpful for separating empty from non-empty images based on a detector confidence threshold that you select, and putting bounding boxes around animals, people, and vehicles to help manual review proceed more quickly.  If you are interested in setting up an endpoint to process very small numbers of images for real-time applications (e.g. for anti-poaching applications), see the source for our [real-time camera trap image processing API](https://github.com/microsoft/CameraTraps/tree/main/api/synchronous).
+Though most of our users either use the [MegaDetector](https://github.com/ecologize/CameraTraps#megadetector) model directly or work with us to run MegaDetector on the cloud, we also offer an open-source reference implementation for a an API that processes a large quantity of camera trap images, to support  a variety of online scenarios. The output is most helpful for separating empty from non-empty images based on a detector confidence threshold that you select, and putting bounding boxes around animals, people, and vehicles to help manual review proceed more quickly.  If you are interested in setting up an endpoint to process very small numbers of images for real-time applications (e.g. for anti-poaching applications), see the source for our [real-time camera trap image processing API](https://github.com/ecologize/CameraTraps/tree/main/api/synchronous).
 
 With the batch processing API, you can process a batch of up to a few million images in one request to the API. If in addition you have some images that are labeled, we can evaluate the performance of the MegaDetector on your labeled images (see [Post-processing tools](#post-processing-tools)).
 
@@ -205,7 +205,7 @@ Example output with both detection and classification results:
 ```json
 {
     "info": {
-        "format_version": "1.2",
+        "format_version": "1.3",
         "detector": "md_v4.1.0.pb",
         "detection_completion_time": "2019-05-22 02:12:19",
         "classifier": "ecosystem1_v2",
@@ -235,7 +235,6 @@ Example output with both detection and classification results:
         {
             "file": "path/from/base/dir/image_with_animal.jpg",
             "meta": "optional free-text metadata",
-            "max_detection_conf": 0.926,
             "detections": [
                 {
                     "category": "1",
@@ -257,7 +256,6 @@ Example output with both detection and classification results:
         {
             "file": "/path/from/base/dir/empty_image.jpg",
             "meta": "",
-            "max_detection_conf": 0,
             "detections": []
         },
         {

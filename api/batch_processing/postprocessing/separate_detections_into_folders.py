@@ -82,11 +82,10 @@ import itertools
 
 from multiprocessing.pool import ThreadPool
 from functools import partial
-from detection.run_detector import get_detector_metadata_from_version_string        
-from detection.run_detector import get_detector_version_from_filename
 from tqdm import tqdm
 
 from ct_utils import args_to_object
+from detection.run_detector import get_typical_confidence_threshold_from_results
 
 import visualization.visualization_utils as viz_utils
 
@@ -382,11 +381,19 @@ def process_detections(im,options):
         # Read EXIF metadata
         exif = pil_image.info['exif'] if ('exif' in pil_image.info) else None
         
-        # Write output with EXIF metadata and quality='keep'
+        # Write output with EXIF metadata if available, and quality='keep' if this is a JPEG
+        # image.  Unfortunately, neither parameter likes "None", so we get a slightly
+        # icky cascade of if's here.
         if exif is not None:
-            pil_image.save(target_path, exif=exif, quality='keep')
+            if pil_image.format == "JPEG":
+                pil_image.save(target_path, exif=exif, quality='keep')
+            else:
+                pil_image.save(target_path, exif=exif)
         else:
-            pil_image.save(target_path, quality='keep')
+            if pil_image.format == "JPEG":            
+                pil_image.save(target_path, quality='keep')
+            else:
+                pil_image.save(target_path)
         
         # Also see:
         #
@@ -407,7 +414,8 @@ def separate_detections_into_folders(options):
     if (os.path.isdir(options.base_output_folder)) and \
         (len(os.listdir(options.base_output_folder) ) > 0):
         if options.allow_existing_directory:
-            print('Warning: target folder exists and is not empty... did you mean to delete an old version?')
+            print('Warning: target folder exists and is not empty... did ' + \
+                  'you mean to delete an old version?')
         else:
             raise ValueError('Target folder exists and is not empty')
     os.makedirs(options.base_output_folder,exist_ok=True)    
@@ -425,22 +433,9 @@ def separate_detections_into_folders(options):
     
     default_threshold = options.threshold
     
-    if default_threshold is None:
+    if default_threshold is None:        
+        default_threshold = get_typical_confidence_threshold_from_results(results)        
         
-        if 'detector_metadata' in results['info'] and \
-            'typical_detection_threshold' in results['info']['detector_metadata']:
-            default_threshold = results['info']['detector_metadata']['typical_detection_threshold']
-        elif ('detector' not in results['info']) or (results['info']['detector'] is None):
-            print('Warning: detector version not available in results file, using MDv5 defaults')
-            detector_metadata = get_detector_metadata_from_version_string('v5a.0.0')
-            default_threshold = detector_metadata['typical_detection_threshold']
-        else:
-            print('Warning: detector metadata not available in results file, inferring from MD version')
-            detector_filename = results['info']['detector']
-            detector_version = get_detector_version_from_filename(detector_filename)
-            detector_metadata = get_detector_metadata_from_version_string(detector_version)
-            default_threshold = detector_metadata['typical_detection_threshold']
-    
     detection_categories = results['detection_categories']    
     options.detection_categories = detection_categories
     options.category_id_to_category_name = detection_categories
@@ -563,7 +558,8 @@ if False:
     
     options = SeparateDetectionsIntoFoldersOptions()
     
-    options.results_file = os.path.expanduser('~/data/snapshot-safari-2022-08-16-KRU-v5a.0.0_detections.json')
+    options.results_file = os.path.expanduser(
+        '~/data/snapshot-safari-2022-08-16-KRU-v5a.0.0_detections.json')
     options.base_input_folder = os.path.expanduser('~/data/KRU/KRU_public')
     options.base_output_folder = os.path.expanduser('~/data/KRU-separated')
     options.n_threads = 100
@@ -615,7 +611,9 @@ def main():
     parser.add_argument('base_output_folder', type=str, help='Output image folder')
 
     parser.add_argument('--threshold', type=float, default=None,
-                        help='Default confidence threshold for all categories (defaults to selection based on model version, other options may override this for specific categories)')    
+                        help='Default confidence threshold for all categories (defaults to ' + \
+                            'selection based on model version, other options may override this ' + \
+                            'for specific categories)')    
     parser.add_argument('--animal_threshold', type=float, default=None,
                         help='Confidence threshold for the animal category')
     parser.add_argument('--human_threshold', type=float, default=None,
@@ -630,17 +628,21 @@ def main():
     parser.add_argument('--allow_existing_directory', action='store_true', 
                         help='Proceed even if the target directory exists and is not empty')
     parser.add_argument('--no_overwrite', action='store_true', 
-                        help='Skip images that already exist in the target folder, must also specify --allow_existing_directory')    
+                        help='Skip images that already exist in the target folder, must also ' + \
+                             'specify --allow_existing_directory')    
     parser.add_argument('--skip_empty_images', action='store_true',
                         help='Don\'t copy empty images to the output folder')
     parser.add_argument('--render_boxes', action='store_true',
-                        help='Render bounding boxes on output images; may result in some metadata not being transferred')
+                        help='Render bounding boxes on output images; may result in some ' + \
+                             'metadata not being transferred')
     parser.add_argument('--line_thickness', type=int, default=default_line_thickness,
-                        help='Line thickness (in pixels) for rendering, only meaningful if using render_boxes (defaults to {})'.format(
+                        help='Line thickness (in pixels) for rendering, only meaningful if ' + \
+                             'using render_boxes (defaults to {})'.format(
                             default_line_thickness))
     parser.add_argument('--box_expansion', type=int, default=default_line_thickness,
-                        help='Box expansion (in pixels) for rendering, only meaningful if using render_boxes (defaults to {})'.format(
-                            default_box_expansion))
+                        help='Box expansion (in pixels) for rendering, only meaningful if ' + \
+                              'using render_boxes (defaults to {})'.format(
+                              default_box_expansion))
         
     if len(sys.argv[1:])==0:
         parser.print_help()
@@ -668,7 +670,9 @@ def main():
         if args.animal_threshold is not None \
             and args.human_threshold is not None \
             and args.vehicle_threshold is not None:
-                raise ValueError('Default threshold specified, but all category thresholds also specified... not exactly wrong, but it\'s likely that you meant something else.')        
+                raise ValueError('Default threshold specified, but all category thresholds ' + \
+                                 'also specified... not exactly wrong, but it\'s likely that you ' + \
+                                 'meant something else.')        
                     
     options.category_name_to_threshold['animal'] = args.animal_threshold
     options.category_name_to_threshold['person'] = args.human_threshold

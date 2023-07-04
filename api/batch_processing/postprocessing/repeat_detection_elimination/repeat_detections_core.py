@@ -69,7 +69,7 @@ class RepeatDetectionOptions:
 
     # How many occurrences of a single location (as defined by the IOU threshold)
     # are required before we declare it suspicious?
-    occurrenceThreshold = 15
+    occurrenceThreshold = 20
 
     # Ignore "suspicious" detections larger than some size; these are often animals
     # taking up the whole image.  This is expressed as a fraction of the image size.
@@ -143,11 +143,15 @@ class RepeatDetectionOptions:
     includeFolders = None
     excludeFolders = None
 
-    # Optionally show *other* detections in a light gray
+    # Optionally show *other* detections (i.e., detections other than the
+    # one the user is evaluating) in a light gray
     bRenderOtherDetections = False
     otherDetectionsThreshold = 0.2    
     otherDetectionsLineWidth = 1
     
+    # If bRenderOtherDetections is True, what color should we use to render the
+    # (hopefully pretty subtle) non-target detections?
+    # 
     # In theory I'd like these "other detection" rectangles to be partially 
     # transparent, but this is not straightforward, and the alpha is ignored
     # here.  But maybe if I leave it here and wish hard enough, someday it 
@@ -160,7 +164,13 @@ class RepeatDetectionOptions:
     # in the list, for faster review.
     #
     # Can be None, 'xsort', or 'clustersort'
+    #
+    # * None sorts detections chronologically by first occurrence
+    # * 'xsort' sorts detections from left to right
+    # * 'clustersort' clusters detections and sorts by cluster
     smartSort = 'xsort'
+    
+    # Only relevant if smartSort == 'clustersort'
     smartSortDistanceThreshold = 0.1
     
     
@@ -738,13 +748,15 @@ def update_detection_table(RepeatDetectionResults, options, outputFilename=None)
             if (maxP is None) or (p > maxP):
                 maxP = p
         
+        # We should only be making detections *less* likely in this process
+        assert maxP <= maxPOriginal
+        detectionResults.at[iRow, 'max_detection_conf'] = maxP
+
+        # If there was a meaningful change, count it
         if abs(maxP - maxPOriginal) > 1e-3:
 
-            # We should only be making detections *less* likely
             assert maxP < maxPOriginal
-            # row['max_confidence'] = str(maxP)
-            detectionResults.at[iRow, 'max_detection_conf'] = maxP
-
+            
             nProbChanges += 1
 
             if (maxP < 0) and (maxPOriginal >= 0):
@@ -754,7 +766,8 @@ def update_detection_table(RepeatDetectionResults, options, outputFilename=None)
                 nProbChangesAcrossThreshold += 1
 
             # Negative probabilities should be the only reason maxP changed, so
-            # we should have found at least one negative value
+            # we should have found at least one negative value if we reached
+            # this point.
             assert nNegative > 0
 
         # ...if there was a meaningful change to the max probability for this row
@@ -824,7 +837,8 @@ def find_repeat_detections(inputFilename, outputFilename=None, options=None):
         os.makedirs(options.outputBase,exist_ok=True)
 
 
-    # Load file
+    # Load file to a pandas dataframe.  Also populates 'max_detection_conf', even if it's
+    # not present in the .json file.
 
     detectionResults, otherFields = load_api_results(inputFilename, normalize_paths=True,
                                          filename_replacements=options.filenameReplacements)
@@ -940,8 +954,6 @@ def find_repeat_detections(inputFilename, outputFilename=None, options=None):
         if not options.bParallelizeComparisons:
 
             options.pbar = None
-            # iDir = 4; dirName = dirsToSearch[iDir]
-            # for iDir, dirName in enumerate(tqdm(dirsToSearch)):
             for iDir, dirName in tqdm(enumerate(dirsToSearch)):
                 dirNameAndRow = dirNameAndRows[iDir]
                 assert dirNameAndRow[0] == dirName
@@ -955,19 +967,32 @@ def find_repeat_detections(inputFilename, outputFilename=None, options=None):
             from multiprocessing.pool import Pool
             from functools import partial
             
+            n_workers = options.nWorkers
+            if n_workers > len(dirNameAndRows):
+                print('Pool of {} requested, but only {} folders available, reducing pool to {}'.\
+                      format(n_workers,len(dirNameAndRows),len(dirNameAndRows)))
+                n_workers = len(dirNameAndRows)
+                                    
             if options.parallelizationUsesThreads:
-                pool = ThreadPool(options.nWorkers)
-                poolstring = 'threads'
+                pool = ThreadPool(n_workers)
+                poolstring = 'threads'                
             else:
-                pool = Pool(options.nWorkers)
+                pool = Pool(n_workers)
                 poolstring = 'processes'
-                            
-            print('Starting pool with {} {}'.format(options.nWorkers,poolstring))
+
+            print('Starting pool with {} {}'.format(n_workers,poolstring))
             
-            options.pbar = tqdm(total=len(dirsToSearch))
-            
-            allCandidateDetections = list(pool.imap(
-                partial(find_matches_in_directory,options=options), dirNameAndRows))
+            # We get slightly nicer progress bar behavior using threads, by passing a pbar 
+            # object and letting it get updated.  We can't serialize this object across 
+            # processes.
+            if options.parallelizationUsesThreads:
+                options.pbar = tqdm(total=len(dirNameAndRows))
+                allCandidateDetections = list(pool.imap(
+                    partial(find_matches_in_directory,options=options), dirNameAndRows))
+            else:
+                options.pbar = None                
+                allCandidateDetections = list(tqdm(pool.imap(
+                    partial(find_matches_in_directory,options=options), dirNameAndRows)))
 
         print('\nFinished looking for similar detections')
 

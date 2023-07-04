@@ -11,7 +11,7 @@ on lots of images, you should check out:
 
 1) run_detector_batch.py (for local execution)
 
-2) https://github.com/microsoft/CameraTraps/tree/master/api/batch_processing
+2) https://github.com/ecologize/CameraTraps/tree/master/api/batch_processing
    (for running large jobs on Azure ML)
 
 To run this script, we recommend you set up a conda virtual environment
@@ -80,6 +80,9 @@ DEFAULT_DETECTOR_LABEL_MAP = {
     '3': 'vehicle'  # available in megadetector v4+
 }
 
+# Should we allow classes that don't look anything like the MegaDetector classes?
+USE_MODEL_NATIVE_CLASSES = False
+
 # Each version of the detector is associated with some "typical" values
 # that are included in output files, so that downstream applications can 
 # use them as defaults.
@@ -111,7 +114,7 @@ DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD = 0.005
 
 DEFAULT_BOX_THICKNESS = 4
 DEFAULT_BOX_EXPANSION = 0
-
+    
 
 #%% Classes
 
@@ -220,6 +223,28 @@ def get_detector_version_from_filename(detector_filename):
     else:
         return known_model_versions[matches[0]]
     
+
+def get_typical_confidence_threshold_from_results(results):
+    """
+    Given the .json data loaded from a MD results file, determine a typical confidence
+    threshold based on the detector version.
+    """
+    if 'detector_metadata' in results['info'] and \
+        'typical_detection_threshold' in results['info']['detector_metadata']:
+        default_threshold = results['info']['detector_metadata']['typical_detection_threshold']
+    elif ('detector' not in results['info']) or (results['info']['detector'] is None):
+        print('Warning: detector version not available in results file, using MDv5 defaults')
+        detector_metadata = get_detector_metadata_from_version_string('v5a.0.0')
+        default_threshold = detector_metadata['typical_detection_threshold']
+    else:
+        print('Warning: detector metadata not available in results file, inferring from MD version')
+        detector_filename = results['info']['detector']
+        detector_version = get_detector_version_from_filename(detector_filename)
+        detector_metadata = get_detector_metadata_from_version_string(detector_version)
+        default_threshold = detector_metadata['typical_detection_threshold']
+
+    return default_threshold    
+
     
 def is_gpu_available(model_file):
     """Decide whether a GPU is available, importing PyTorch or TF depending on the extension
@@ -256,11 +281,12 @@ def load_detector(model_file, force_cpu=False):
     if model_file.endswith('.pb'):
         from detection.tf_detector import TFDetector
         if force_cpu:
-            raise ValueError('force_cpu option is not currently supported for TF detectors, use CUDA_VISIBLE_DEVICES=-1')
+            raise ValueError('force_cpu option is not currently supported for TF detectors, ' + \
+                             'use CUDA_VISIBLE_DEVICES=-1')
         detector = TFDetector(model_file)
     elif model_file.endswith('.pt'):
         from detection.pytorch_detector import PTDetector
-        detector = PTDetector(model_file, force_cpu)
+        detector = PTDetector(model_file, force_cpu, USE_MODEL_NATIVE_CLASSES)        
     else:
         raise ValueError('Unrecognized model format: {}'.format(model_file))
     elapsed = time.time() - start_time
@@ -284,16 +310,6 @@ def load_and_run_detector(model_file, image_file_names, output_dir,
     print('GPU available: {}'.format(is_gpu_available(model_file)))
     
     detector = load_detector(model_file)
-    
-    start_time = time.time()
-    if model_file.endswith('.pb'):
-        from detection.tf_detector import TFDetector
-        detector = TFDetector(model_file)
-    elif model_file.endswith('.pt'):
-        from detection.pytorch_detector import PTDetector
-        detector = PTDetector(model_file)
-    elapsed = time.time() - start_time
-    print('Loaded model in {}'.format(humanfriendly.format_timespan(elapsed)))
 
     detection_results = []
     time_load = []
@@ -372,8 +388,8 @@ def load_and_run_detector(model_file, image_file_names, output_dir,
             start_time = time.time()
 
             result = detector.generate_detections_one_image(image, im_file,
-                                                            detection_threshold=DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD,
-                                                            image_size=image_size)
+                       detection_threshold=DEFAULT_OUTPUT_CONFIDENCE_THRESHOLD,
+                       image_size=image_size)
             detection_results.append(result)
 
             elapsed = time.time() - start_time
@@ -396,9 +412,9 @@ def load_and_run_detector(model_file, image_file_names, output_dir,
 
                 # Image is modified in place
                 viz_utils.render_detection_bounding_boxes(result['detections'], image,
-                                                          label_map=DEFAULT_DETECTOR_LABEL_MAP,
-                                                          confidence_threshold=render_confidence_threshold,
-                                                          thickness=box_thickness, expansion=box_expansion)
+                            label_map=DEFAULT_DETECTOR_LABEL_MAP,
+                            confidence_threshold=render_confidence_threshold,
+                            thickness=box_thickness, expansion=box_expansion)
                 output_full_path = input_file_to_detection_file(im_file)
                 image.save(output_full_path)
 

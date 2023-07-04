@@ -62,10 +62,9 @@ namespace CameraTrapJsonManagerApp
             this.Text += " (version " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString() + ")";
 
 #if DEBUG            
-            // textboxInputFile.Text = @"C:\temp\980_detections_uw_gardner_mar2020_20200325233026.json";
-            textboxInputFile.Text = @"C:\temp\json_test.json";
-            textboxOutputFolderFile.Text = @"c:\temp\out";
-            textboxConfidenceThreshold.Text = "0.5";
+            textboxInputFile.Text = @"g:\temp\test.json";
+            textboxOutputFolderFile.Text = @"g:\temp\out";
+            textboxConfidenceThreshold.Text = "";
             textBoxSplitParameter.Text = "1";
             comboBoxSplitFolderMode.SelectedItem = "NFromTop";
             checkBoxMakeFolderRelative.Checked = true;
@@ -483,7 +482,7 @@ namespace CameraTrapJsonManagerApp
 
         private void ButtonHelp_Click(object sender, EventArgs e)
         {
-            System.Diagnostics.Process.Start("https://github.com/microsoft/CameraTraps/blob/master/api/batch_processing/postprocessing/CameraTrapJsonManagerApp.md");
+            System.Diagnostics.Process.Start("https://github.com/ecologize/CameraTraps/blob/master/api/batch_processing/postprocessing/CameraTrapJsonManagerApp.md");
         }
 
         private void buttonBrowseFolder_Click(object sender, EventArgs e)

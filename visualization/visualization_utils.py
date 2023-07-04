@@ -39,7 +39,9 @@ DEFAULT_DETECTOR_LABEL_MAP = {
 n_retries = 10
 retry_sleep_time = 0.01
 error_names_for_retry = ['ConnectionError']
-                
+
+DEFAULT_BOX_THICKNESS = 4                
+
 
 #%% Functions
 
@@ -174,9 +176,10 @@ def show_images_in_a_row(images):
 
 
 # The following three functions are modified versions of those at:
+#
 # https://github.com/tensorflow/models/blob/master/research/object_detection/utils/visualization_utils.py
 
-COLORS = [
+DEFAULT_COLORS = [
     'AliceBlue', 'Red', 'RoyalBlue', 'Gold', 'Chartreuse', 'Aqua', 'Azure',
     'Beige', 'Bisque', 'BlanchedAlmond', 'BlueViolet', 'BurlyWood', 'CadetBlue',
     'AntiqueWhite', 'Chocolate', 'Coral', 'CornflowerBlue', 'Cornsilk', 'Crimson',
@@ -203,7 +206,7 @@ COLORS = [
 ]
 
 
-def crop_image(detections, image, confidence_threshold=0.8, expansion=0):
+def crop_image(detections, image, confidence_threshold=0.15, expansion=0):
     """
     Crops detections above *confidence_threshold* from the PIL image *image*,
     returning a list of PIL images.
@@ -255,19 +258,18 @@ def crop_image(detections, image, confidence_threshold=0.8, expansion=0):
 
 def render_detection_bounding_boxes(detections, image,
                                     label_map={}, 
-                                    classification_label_map={}, 
-                                    confidence_threshold=0.8, thickness=4, expansion=0,
+                                    classification_label_map=None, 
+                                    confidence_threshold=0.15, thickness=DEFAULT_BOX_THICKNESS, expansion=0,
                                     classification_confidence_threshold=0.3,
                                     max_classifications=3,
-                                    colormap=COLORS,
+                                    colormap=DEFAULT_COLORS,
                                     textalign=TEXTALIGN_LEFT):
     """
     Renders bounding boxes, label, and confidence on an image if confidence is above the threshold.
 
-    This works with the output of the batch processing API.
+    Boxes are in the format that's output from the batch processing API.
 
-    Supports classification, if the detection contains classification results according to the
-    API output version 1.0.
+    Renders classification labels if present.
 
     Args:
 
@@ -319,22 +321,33 @@ def render_detection_bounding_boxes(detections, image,
             label_map; no casting is carried out.  If this is None, no classification labels are shown.
 
         confidence_threshold: optional, threshold above which the bounding box is rendered.
+        
         thickness: line thickness in pixels. Default value is 4.
+        
         expansion: number of pixels to expand bounding boxes on each side.  Default is 0.
+        
         classification_confidence_threshold: confidence above which classification result is retained.
+        
         max_classifications: maximum number of classification results retained for one image.
 
     image is modified in place.
     """
 
     display_boxes = []
-    display_strs = []  # list of lists, one list of strings for each bounding box (to accommodate multiple labels)
-    classes = []  # for color selection
+    
+    # list of lists, one list of strings for each bounding box (to accommodate multiple labels)
+    display_strs = []  
+    
+    # for color selection
+    classes = []  
 
     for detection in detections:
 
         score = detection['conf']
-        if score >= confidence_threshold:
+        
+        # Always render objects with a confidence of "None", this is typically used
+        # for ground truth data.        
+        if score is None or score >= confidence_threshold:
             
             x1, y1, w_box, h_box = detection['bbox']
             display_boxes.append([y1, x1, y1 + h_box, x1 + w_box])
@@ -344,7 +357,10 @@ def render_detection_bounding_boxes(detections, image,
             # if label_map:
             if label_map is not None:
                 label = label_map[clss] if clss in label_map else clss
-                displayed_label = ['{}: {}%'.format(label, round(100 * score))]
+                if score is not None:
+                    displayed_label = ['{}: {}%'.format(label, round(100 * score))]
+                else:
+                    displayed_label = ['{}'.format(label)]
             else:
                 displayed_label = ''
 
@@ -359,15 +375,19 @@ def render_detection_bounding_boxes(detections, image,
                     
                 for classification in classifications:
                     
-                    p = classification[1]
-                    if p < classification_confidence_threshold:
+                    classification_conf = classification[1]
+                    if classification_conf is not None and \
+                        classification_conf < classification_confidence_threshold:
                         continue
                     class_key = classification[0]
                     if (classification_label_map is not None) and (class_key in classification_label_map):
                         class_name = classification_label_map[class_key]
                     else:
                         class_name = class_key
-                    displayed_label += ['{}: {:5.1%}'.format(class_name.lower(), classification[1])]
+                    if classification_conf is not None:
+                        displayed_label += ['{}: {:5.1%}'.format(class_name.lower(), classification_conf)]
+                    else:
+                        displayed_label += ['{}'.format(class_name.lower())]
                     
                 # ...for each classification
 
@@ -390,10 +410,10 @@ def render_detection_bounding_boxes(detections, image,
 def draw_bounding_boxes_on_image(image,
                                  boxes,
                                  classes,
-                                 thickness=4,
+                                 thickness=DEFAULT_BOX_THICKNESS,
                                  expansion=0,
                                  display_strs=None,
-                                 colormap=COLORS,
+                                 colormap=DEFAULT_COLORS,
                                  textalign=TEXTALIGN_LEFT):
     """
     Draws bounding boxes on an image.
@@ -402,8 +422,8 @@ def draw_bounding_boxes_on_image(image,
       image: a PIL.Image object.
       boxes: a 2 dimensional numpy array of [N, 4]: (ymin, xmin, ymax, xmax).
              The coordinates are in normalized format between [0, 1].
-      classes: a list of ints or strings (that can be cast to ints) corresponding to the class labels of the boxes.
-             This is only used for selecting the color to render the bounding box in.
+      classes: a list of ints or strings (that can be cast to ints) corresponding to the
+               class labels of the boxes. This is only used for color selection.
       thickness: line thickness in pixels. Default value is 4.
       expansion: number of pixels to expand bounding boxes on each side.  Default is 0.
       display_strs: list of list of strings.
@@ -437,12 +457,12 @@ def draw_bounding_box_on_image(image,
                                ymax,
                                xmax,
                                clss=None,
-                               thickness=4,
+                               thickness=DEFAULT_BOX_THICKNESS,
                                expansion=0,
                                display_str_list=(),
                                use_normalized_coordinates=True,
                                label_font_size=16,
-                               colormap=COLORS,
+                               colormap=DEFAULT_COLORS,
                                textalign=TEXTALIGN_LEFT):
     """
     Adds a bounding box to an image.
@@ -490,7 +510,7 @@ def draw_bounding_box_on_image(image,
         right += expansion
         top -= expansion
         bottom += expansion
-
+        
         # Deliberately trimming to the width of the image only in the case where
         # box expansion is turned on.  There's not an obvious correct behavior here,
         # but the thinking is that if the caller provided an out-of-range bounding
@@ -506,7 +526,7 @@ def draw_bounding_box_on_image(image,
 
         left = min(left,im_width-1); right = min(right,im_width-1)
         top = min(top,im_height-1); bottom = min(bottom,im_height-1)
-
+        
     # ...if we need to expand boxes
     
     draw.line([(left, top), (left, bottom), (right, bottom),
@@ -566,7 +586,8 @@ def render_iMerit_boxes(boxes, classes, image,
     Renders bounding boxes and their category labels on a PIL image.
 
     Args:
-        boxes: bounding box annotations from iMerit, format is [x_rel, y_rel, w_rel, h_rel] (rel = relative coords)
+        boxes: bounding box annotations from iMerit, format is:
+            [x_rel, y_rel, w_rel, h_rel] (rel = relative coords)
         classes: the class IDs of the predicted class of each box/object
         image: PIL.Image object to annotate on
         label_map: optional dict mapping classes to a string for display
@@ -576,7 +597,10 @@ def render_iMerit_boxes(boxes, classes, image,
     """
 
     display_boxes = []
-    display_strs = []  # list of list, one list of strings for each bounding box (to accommodate multiple labels)
+    
+    # list of lists, one list of strings for each bounding box (to accommodate multiple labels)
+    display_strs = []  
+    
     for box, clss in zip(boxes, classes):
         if len(box) == 0:
             assert clss == 5
@@ -629,11 +653,14 @@ def render_megadb_bounding_boxes(boxes_info, image):
 
 
 def render_db_bounding_boxes(boxes, classes, image, original_size=None,
-                             label_map=None, thickness=4, expansion=0):
+                             label_map=None, thickness=DEFAULT_BOX_THICKNESS, expansion=0):
     """
     Render bounding boxes (with class labels) on [image].  This is a wrapper for
     draw_bounding_boxes_on_image, allowing the caller to operate on a resized image
     by providing the original size of the image; bboxes will be scaled accordingly.
+    
+    This function assumes that bounding boxes are in the COCO camera traps format,
+    with absolute coordinates.
     """
 
     display_boxes = []
@@ -648,7 +675,7 @@ def render_db_bounding_boxes(boxes, classes, image, original_size=None,
 
     for box, clss in zip(boxes, classes):
 
-        x_min_abs, y_min_abs, width_abs, height_abs = box
+        x_min_abs, y_min_abs, width_abs, height_abs = box[0:4]
 
         ymin = y_min_abs / img_height
         ymax = ymin + height_abs / img_height
@@ -660,7 +687,9 @@ def render_db_bounding_boxes(boxes, classes, image, original_size=None,
 
         if label_map:
             clss = label_map[int(clss)]
-        display_strs.append([str(clss)])  # need to be a string here because PIL needs to iterate through chars
+            
+        # need to be a string here because PIL needs to iterate through chars
+        display_strs.append([str(clss)])  
 
     display_boxes = np.array(display_boxes)
     draw_bounding_boxes_on_image(image, display_boxes, classes, display_strs=display_strs,
@@ -668,16 +697,54 @@ def render_db_bounding_boxes(boxes, classes, image, original_size=None,
 
 
 def draw_bounding_boxes_on_file(input_file, output_file, detections, confidence_threshold=0.0,
-                                detector_label_map=DEFAULT_DETECTOR_LABEL_MAP):
+                                detector_label_map=DEFAULT_DETECTOR_LABEL_MAP,
+                                thickness=DEFAULT_BOX_THICKNESS, expansion=0,
+                                colormap=DEFAULT_COLORS):
     """
     Render detection bounding boxes on an image loaded from file, writing the results to a
-    new images file.  "detections" is in the API results format.
+    new image file.
+    
+    "detections" is in the API results format:
+        
+    [{"category": "2","conf": 0.996,"bbox": [0.0,0.2762,0.1234,0.2458]}]
+    
+    ...where the bbox is:
+        
+    [x_min, y_min, width_of_box, height_of_box]
+    
+    Normalized, with the origin at the upper-left.
+    
+    detector_label_map is a dict mapping category IDs to strings.
     """
     
     image = open_image(input_file)
 
     render_detection_bounding_boxes(
             detections, image, label_map=detector_label_map,
-            confidence_threshold=confidence_threshold)
+            confidence_threshold=confidence_threshold,
+            thickness=thickness,expansion=expansion,colormap=colormap)
 
     image.save(output_file)
+
+
+def draw_db_boxes_on_file(input_file, output_file, boxes, classes=None, 
+                          label_map=None, thickness=DEFAULT_BOX_THICKNESS, expansion=0):
+    """
+    Render COCO bounding boxes (in absolute coordinates) on an image loaded from file, writing the
+    results to a new image file.
+
+    classes is a list of integer category IDs.
+    
+    detector_label_map is a dict mapping category IDs to strings.
+    """
+    image = open_image(input_file)
+
+    if classes is None:
+        classes = [0] * len(boxes)
+        
+    render_db_bounding_boxes(boxes, classes, image, original_size=None,
+                                 label_map=label_map, thickness=thickness, expansion=expansion)
+
+    image.save(output_file)
+    
+    
