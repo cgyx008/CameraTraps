@@ -46,6 +46,7 @@ from functools import partial
 from pathlib import Path
 
 import humanfriendly
+import torch
 from tqdm import tqdm
 
 # from multiprocessing.pool import ThreadPool as workerpool
@@ -826,18 +827,30 @@ def detect_dir(root=r'G:\Data\AD\reolink\videos\ReolinkPR_Out_Keen'):
     """
     root = Path(root)
     detector_file = r'D:\Projects\CameraTraps\weights\v5\md_v5a.0.0.pt'
-    img_dirs = sorted(list(set(p.parent for p in root.glob('**/*.jpg'))))
+    img_paths = list(root.glob('**/*'))
+    img_dirs = sorted(list(set(
+        [p.parent for p in img_paths if p.suffix in {'.jpg', '.png', '.jpeg'}]
+    )))
     for i, img_dir in enumerate(img_dirs):
         print(f'Detecting {i + 1} / {len(img_dirs)}: {img_dir} ...')
         sys.argv = sys.argv[:1]
         image_file = str(img_dir)
-        output_file = str(img_dir / 'md.json')
+        output_file = str(img_dir.parent / 'md.json')
         opts = ['--quiet']
         cmd = [detector_file, image_file, output_file, *opts]
         sys.argv.extend(cmd)
 
+        # If md.json exists, continue
+        if Path(output_file).exists():
+            continue
+
         main()
+        torch.cuda.empty_cache()
 
 
 if __name__ == '__main__':
-    detect_dir(r'W:\ganhao\AD\wd\v03\clean_turkey\images\test')
+    dirs = [
+        r'U:\Animal\Private\test_feedback\20231123\RecM05_20231120_155641_155702_SW_671ECA000_48C76F\images'
+    ]
+    for d in dirs:
+        detect_dir(d)
