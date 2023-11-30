@@ -48,6 +48,9 @@ class PTDetector:
             except AttributeError:
                 pass
         self.model = PTDetector._load_model(model_path, self.device)
+        for m in self.model.modules():
+            if isinstance(m, torch.nn.Upsample):
+                m.recompute_scale_factor = None
         if (self.device != 'cpu'):
             print('Sending model to GPU')
             self.model.to(self.device)
