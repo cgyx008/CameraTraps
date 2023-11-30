@@ -245,7 +245,7 @@ def main() -> None:
     visualize_detector_output(
         detector_output_path=args.detector_output_path,
         out_dir=args.out_dir,
-        confidence=args.confidence,
+        confidence_threshold=args.confidence,
         images_dir=args.images_dir,
         is_azure=args.is_azure,
         sample=args.sample,
@@ -279,8 +279,8 @@ def vis_md(src='F:/data/AD/iNat', dst='G:/Data/AD/iNat/mgd', conf=0.999):
     json_paths = sorted(list(src.glob('**/md.json')))
 
     for i, json_path in enumerate(json_paths):
-        print(f'Processing {i} / {len(json_paths)}: {json_path} ...')
-        out_dir = Path(dst or json_path.parent / f'md_ge_{conf}')
+        print(f'Processing {i + 1} / {len(json_paths)}: {json_path} ...')
+        out_dir = Path(dst or json_path.parent.parent / f'images_vis_md_ge_{conf}')
         cmd = [str(json_path), str(out_dir),
                '-i', str(json_path.parent), '-c', str(conf), '-w', '-1', '-do']
         sys.argv = sys.argv[:1]
@@ -290,4 +290,4 @@ def vis_md(src='F:/data/AD/iNat', dst='G:/Data/AD/iNat/mgd', conf=0.999):
 
 
 if __name__ == '__main__':
-    vis_md('G:/Data/AD/reolink/videos/ReolinkPR_Out_Keen', None, 0.3)
+    vis_md(r'U:\Animal\Private\218_animal\turkey\turkey-day-2\images', None, 0.3)
