@@ -1,38 +1,143 @@
-# Overview
+# Pytorch-Wildlife: A Collaborative Deep Learning Framework for Conservation
+ 
+## Announcement
+ 
+At the core of our mission is the desire to create a harmonious space where conservation scientists from all over the globe can unite, share, and grow. We are expanding the CameraTraps repo to introduce **Pytorch-Wildlife**, a Collaborative Deep Learning Framework for Conservation, where researchers can come together to share and use datasets and deep learning architectures for wildlife conservation.
+ 
+We've been inspired by the potential and capabilities of Megadetector, and we deeply value its contributions to the community. **As we forge ahead with Pytorch-Wildlife, under which Megadetector now resides, please know that we remain committed to supporting, maintaining, and developing Megadetector, ensuring its continued relevance, expansion, and utility.**
 
-This repo contains the tools for training, running, and evaluating detectors and classifiers for images collected from motion-triggered wildlife cameras.  The core functionality provided is:
+To use the newest version of MegaDetector with all the exisitng functionatlities, you can use our newly developed [user interface](#explore-pytorch-wildlife-and-megadetector-with-our-user-interface) or simply load the model with **Pytorch-Wildlife** and the weights will be automatically downloaded:
 
-- Training and running models, particularly [MegaDetector](megadetector.md), an object detection model that does a pretty good job finding animals, people, and vehicles (and therefore is pretty good at finding empty images) in a variety of terrestrial ecosystems
-- Data parsing from frequently-used camera trap metadata formats into a common format
-- A [batch processing API](https://github.com/ecologize/CameraTraps/tree/main/api/batch_processing) that runs MegaDetector on large image collections, to accelerate population surveys
-- A [real-time API](https://github.com/ecologize/CameraTraps/tree/main/api/synchronous) that runs MegaDetector (and some species classifiers) synchronously, primarily to support anti-poaching scenarios (e.g. see this [blog post](https://customers.microsoft.com/en-us/story/1384184517929343083-wildlife-protection-solutions-nonprofit-ai-for-earth) describing how this API supports [Wildlife Protection Solutions](https://wildlifeprotectionsolutions.org/))
+```python
+from PytorchWildlife.models import detection as pw_detection
+detection_model = pw_detection.MegaDetectorV5()
+```
 
-This repo is maintained by folks at [Ecologize](http://ecologize.org/) who like looking at pictures of animals.  We want to support conservation, of course, but we also really like looking at pictures of animals.
+If you'd like to learn more about **Pytorch-Wildlife**, please continue reading.
+
+For those interested in accessing the previous MegaDetector repository, which utilizes the same `MegaDetector v5` model weights and was primarily developed by Dan Morris during his time at Microsoft, please visit the [archive](./archive) directory, or you can visit this [forked repository](https://github.com/agentmorris/MegaDetector/tree/main) that Dan Morris is actively maintaining.
+ 
+**If you have any questions regarding MegaDetector and Pytorch-Wildlife, please <a href="mailto:zhongqimiao@microsoft.com">email us</a>!**
+ 
+## Table of contents
+
+- [Pytorch-Wildlife: A Collaborative Deep Learning Framework for Conservation](#pytorch-wildlife-a-collaborative-deep-learning-framework-for-conservation)
+  - [Announcement](#announcement)
+  - [Table of contents](#table-of-contents)
+  - [Welcome to Pytorch-Wildlife Version 1.0](#welcome-to-pytorch-wildlife-version-10)
+  - [Explore Pytorch-Wildlife and MegaDetector with Our User Interface](#explore-pytorch-wildlife-and-megadetector-with-our-user-interface)
+  - [Core Features of Pytorch-Wildlife](#core-features-of-pytorch-wildlife)
+    - [What are the core components of Pytorch-Wildlife?](#what-are-the-core-components-of-pytorch-wildlife)
+    - [Progress on the core tasks](#progress-on-the-core-tasks)
+    - [Development roadmap](#development-roadmap)
+  - [Examples!](#examples)
+    - [Image detection using `MegaDetector v5`](#image-detection-using-megadetector-v5)
+    - [Image classification with `MegaDetector v5` and `AI4GAmazonRainforest`](#image-classification-with-megadetector-v5-and-ai4gamazonrainforest)
+    - [Opossum ID with `MegaDetector v5` and `AI4GOpossum`](#opossum-id-with-megadetector-v5-and-ai4gopossum)
+  - [Contributing](#contributing)
+  - [Existing Collaborators](#existing-collaborators)
+  - [License](#license)
+
+ 
+## Welcome to Pytorch-Wildlife Version 1.0
+ 
+**PyTorch-Wildlife** is a platform to create, modify, and share powerful AI conservation models. These models can be used for a variety of applications, including camera trap images, overhead images, underwater images, or bioacoustics. Your engagement with our work is greatly appreciated, and we eagerly await any feedback you may have.
+
+The **Pytorch-Wildlife** library allows users to directly load the `MegaDetector v5` model weights for animal detection. We've fully refactored our codebase, prioritizing ease of use in model deployment and expansion. In addition to ``MegaDetector v5``, **Pytorch-Wildlife** also accommodates a range of classification weights, such as those derived from the Amazon Rainforest dataset and the Opossum classification dataset.
+Explore the codebase and  functionalities of **Pytorch-Wildlife** through our interactive `Gradio` web app and detailed Jupyter notebooks, designed to showcase the practical applications of our enhancements at [PyTorchWildlife](INSTALLATION.md). You can find more information in our [documentation](https://cameratraps.readthedocs.io/en/latest/).
+ 
+Here is a brief example on how to perform detection and classification on a single image using `PyTorch-wildlife`:
+
+```python
+import torch
+from PytorchWildlife.models import detection as pw_detection
+from PytorchWildlife.models import classification as pw_classification
+
+img = torch.randn((3, 1280, 1280))
+
+# Detection
+detection_model = pw_detection.MegaDetectorV5() # Model weights are automatically downloaded.
+detection_result = detection_model.single_image_detection(img)
+
+#Classification
+classification_model = pw_classification.AI4GAmazonRainforest() # Model weights are automatically downloaded.
+classification_results = classification_model.single_image_classification(img)
+```
+ 
+## Explore Pytorch-Wildlife and MegaDetector with Our User Interface
+ 
+If you want to directly try **Pytorch-Wildlife** with the AI models available, including `MegaDetector v5`, you can use our **Gradio** interface. This interface allows users to directly load the `MegaDetector v5` model weights for animal detection. In addition, **Pytorch-Wildlife** also has two classification models in our initial version. One is trained from an Amazon Rainforest camera trap dataset and the other from a Galapagos opossum classification dataset (more details of these datasets will be published soon). To start, please follow the [installation instructions](INSTALLATION.md) on how to run the **Gradio** interface! We also provide multiple [**Jupyter** notebooks](https://github.com/microsoft/CameraTraps/tree/main/demo) for demonstation.
+
+<img src="images/gradio_UI.png">
 
 
-# What's MegaDetector all about?
+## Core Features of Pytorch-Wildlife
 
-The main model that we train and run using tools in this repo is [MegaDetector](megadetector.md), an object detection model that identifies animals, people, and vehicles in camera trap images.  This model is trained on several hundred thousand bounding boxes from a variety of ecosystems.  Lots more information &ndash; including download links and instructions for running the model &ndash; is available on the [MegaDetector page](megadetector.md).
+<img src="images/PyTorch_Wildlife_core_figure.png" width="700">
 
-Here's a "teaser" image of what detector output looks like:
+### What are the core components of Pytorch-Wildlife?
 
-![Red bounding box on fox](images/detector_example.jpg)
+- **Unified Framework**: **Pytorch-Wildlife** integrates four pivotal elements:
+  - Machine Learning Models
+  - Pre-trained Weights
+  - Datasets
+  - Utilities
+ 
+- **Our work**: In the provided graph, boxes outlined in red represent elements that will be added and remained fixed, while those in blue will be part of our development.
 
-Image credit University of Washington.
+- **Inaugural Model**: We're kickstarting with YOLO as our first available model, complemented by pre-trained weights from `MegaDetector v5`. This is the same `MegaDetector v5` model from the previous repository.
 
+- **Expandable Repository**: As we move forward, our platform will welcome new models and pre-trained weights for camera traps and bioacoustic analysis. We're excited to host contributions from global researchers through a dedicated submission platform.
 
-# How do I get started?
+- **Datasets from LILA**: **Pytorch-Wildlife** will also incorporate the vast datasets hosted on LILA, making it a treasure trove for conservation research.
 
-If you're just considering the use of AI in your workflow, and you aren't even sure yet whether MegaDetector would be useful to you, we recommend reading the "[getting started with MegaDetector](collaborations.md)" page.
+- **Versatile Utilities**: Our set of utilities spans from visualization tools to task-specific utilities, many inherited from Megadetector.
 
-If you're already familiar with MegaDetector and you're ready to run it on your data (and you have some familiarity with running Python code), see the [MegaDetector README](megadetector.md) for instructions on downloading and running MegaDetector.
+- **User Interface Flexibility**: While we provide a foundational user interface, our platform is designed to inspire. We encourage researchers to craft and share their unique interfaces, and we'll list both existing and new UIs from other collaborators for the community's benefit.
 
+Let's shape the future of wildlife research, together!
 
-# Who is using MegaDetector?
+### Progress on the core tasks
 
-We work with ecologists all over the world to help them spend less time annotating images and more time thinking about conservation.  You can read a little more about how this works on our [getting started with MegaDetector](collaborations.md) page.
+Below you can find our progress in these core tasks:
+<img src="images/Finished_tasks_announcement.png" width="700">
+<img src="images/PTWildlife_core.png" width="700">
 
-Here are a few of the organizations that have used MegaDetector... we're only listing organizations who (a) we know about and (b) have given us permission to refer to them here (or have posted publicly about their use of MegaDetector), so if you're using MegaDetector or other tools from this repo and would like to be added to this list, <a href="mailto:cameratraps@lila.science">email us</a>!
+### Development roadmap
+Here you can find details of the milestone roadmap for **Pytorch-Wildlife**:
+<img src="images/Finished_tasks_announcement.png" width="700">
+<img src="images/10_PyTorchWildlifeRoadmap_October.png" width="700">
+<img src="images/11_PyTorchWildlifeRoadmap_November.png" width="700">
+<img src="images/12_PyTorchWildlifeRoadmap_December.png" width="700">
+<img src="images/01_PyTorchWildlifeRoadmap_January.png" width="700">
+<img src="images/02_PyTorchWildlifeRoadmap_February.png" width="700">
+
+## Examples!
+### Image detection using `MegaDetector v5`
+<img src="images/animal_det_1.JPG" width="700">
+
+Credits to Universidad de los Andes, Colombia.
+### Image classification with `MegaDetector v5` and `AI4GAmazonRainforest`
+<img src="images/animal_clas_1.png" width="700">
+
+Credits to Universidad de los Andes, Colombia.
+### Opossum ID with `MegaDetector v5` and `AI4GOpossum`
+<img src="images/opossum_det.png" width="700">
+
+Credits to the Agency for Regulation and Control of Biosecurity and Quarantine for Galápagos (ABG), Ecuador.
+
+## Contributing
+This project welcomes contributions and suggestions. If you would like to submit a pull request, we will publish a contribution guideline soon.
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact <a href="mailto:zhongqimiao@microsoft.com">zhongqimiao@microsoft.com</a> with any additional questions or comments.
+
+## Existing Collaborators
+
+Here are a few of the organizations that have used MegaDetector. We're only listing organizations who (a) we know about and (b) have given us permission to refer to them here (or have posted publicly about their use of MegaDetector).
+
+The extensive collaborative efforts of Megadetector have genuinely inspired us, and we deeply value its significant contributions to the community. As we continue to advance with Pytorch-Wildlife, our commitment to delivering technical support to our existing partners on MegaDetector remains the same.
+
+If you have any questions regarding MegaDetector, want to become a collaborator, or would like to be added to this list, please <a href="mailto:zhongqimiao@microsoft.com">email us</a>!
 
 * [Arizona Department of Environmental Quality](http://azdeq.gov/)
 * [Blackbird Environmental](https://blackbirdenv.com/)
@@ -102,87 +207,7 @@ Here are a few of the organizations that have used MegaDetector... we're only li
 * [The Nature Conservancy in California](https://www.nature.org/en-us/about-us/where-we-work/united-states/california/) ([Animl platform](https://github.com/tnc-ca-geo/animl-frontend))
 * [San Diego Zoo Wildlife Alliance](https://science.sandiegozoo.org/)  ([Animl R package](https://github.com/conservationtechlab/animl))
 
-
-
-
-# Data
-
-This repo does not directly host camera trap data, but we work with our collaborators to make data and annotations available whenever possible on [lila.science](http://lila.science).
-
-
-# Contact
-
-For questions about this repo, contact [cameratraps@lila.science](mailto:cameratraps@lila.science).
-
-
-# Contents
-
-This repo is organized into the following folders...
-
-
-## api
-
-Code for hosting our models as an API, either for synchronous operation (i.e., for real-time inference) or as a batch process (for large biodiversity surveys).  Common operations one might do after running MegaDetector &ndash; e.g. [generating preview pages to summarize your results](https://github.com/ecologize/CameraTraps/blob/main/api/batch_processing/postprocessing/postprocess_batch_results.py), [separating images into different folders based on AI results](https://github.com/ecologize/CameraTraps/blob/main/api/batch_processing/postprocessing/separate_detections_into_folders.py), or [converting results to a different format](https://github.com/ecologize/CameraTraps/blob/main/api/batch_processing/postprocessing/convert_output_format.py) &ndash; also live in this folder, within the [api/batch_processing/postprocessing](https://github.com/ecologize/CameraTraps/tree/main/api/batch_processing/postprocessing) folder.
-
-
-## classification
-
-Experimental code for training species classifiers on new data sets, generally trained on MegaDetector crops.  Currently the main pipeline described in this folder relies on a large database of labeled images that is not publicly available; therefore, this folder is not yet set up to facilitate training of your own classifiers.  However, it is useful for <i>users</i> of the classifiers that we train, and contains some useful starting points if you are going to take a "DIY" approach to training classifiers on cropped images.  
-
-All that said, here's another "teaser image" of what you get at the end of training and running a classifier:
-
-<img src="images/warthog_classifications.jpg" width="700">
-
-
-## data_management
-
-Code for:
-
-* Converting frequently-used metadata formats to [COCO Camera Traps](https://github.com/ecologize/CameraTraps/blob/main/data_management/README.md#coco-cameratraps-format) format
-* Converting the output of AI models (especially [YOLOv5](https://github.com/ecologize/CameraTraps/blob/main/api/batch_processing/postprocessing/convert_output_format.py)) to the format used for AI results throughout this repo
-* Creating, visualizing, and  editing COCO Camera Traps .json databases
-
-
-## detection
-
-Code for training, running, and evaluating MegaDetector.
-
-
-## research
-
-Ongoing research projects that use this repository in one way or another; as of the time I'm editing this README, there are projects in this folder around active learning and the use of simulated environments for training data augmentation.
-
-
-## sandbox
-
-Random things that don't fit in any other directory.  For example:
-
-* A not-super-useful but super-duper-satisfying and mostly-successful attempt to use OCR to pull metadata out of image pixels in a fairly generic way, to handle those pesky cases when image metadata is lost.
-* Experimental postprocessing scripts that were built for a single use case
-
-
-## taxonomy-mapping
-
-Code to facilitate mapping data-set-specific categories (e.g. "lion", which means very different things in Idaho vs. South Africa) to a standard taxonomy.
-
-
-## test-images
-
-A handful of images from [LILA](https://lila.science) that facilitate testing and debugging.
-
-
-## visualization
-
-Shared tools for visualizing images with ground truth and/or predicted annotations.
-
-
-# Gratuitous pretty camera trap picture
-
-![Bird flying above water](images/nacti.jpg)
-
-Image credit USDA, from the [NACTI](http://lila.science/datasets/nacti) data set.
-
-
 ## License
 
 This repository is licensed with the [MIT license](https://github.com/Microsoft/dotnet/blob/main/LICENSE).
+
