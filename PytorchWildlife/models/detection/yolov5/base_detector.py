@@ -10,7 +10,7 @@ from tqdm import tqdm
 import supervision as sv
 import torch
 from torch.hub import load_state_dict_from_url
-from yolov5.utils.general import non_max_suppression, scale_coords
+from yolov5.utils.general import non_max_suppression, scale_boxes
 
 class YOLOV5Base:
     """
@@ -113,7 +113,7 @@ class YOLOV5Base:
             img_size = img.permute((1, 2, 0)).shape # We need hwc instead of chw for coord scaling
         preds = self.model(img.unsqueeze(0).to(self.device))[0]
         preds = torch.cat(non_max_suppression(prediction=preds, conf_thres=conf_thres), axis=0)
-        preds[:, :4] = scale_coords([self.IMAGE_SIZE] * 2, preds[:, :4], img_size).round()
+        preds[:, :4] = scale_boxes([self.IMAGE_SIZE] * 2, preds[:, :4], img_size).round()
         return self.results_generation(preds.cpu().numpy(), img_path, id_strip)
 
     def batch_image_detection(self, dataloader, conf_thres=0.2, id_strip=None):
@@ -154,7 +154,7 @@ class YOLOV5Base:
 
         # If there are size differences in the input images, use a for loop instead of matrix processing for scaling
         for pred, size, path in zip(total_preds, total_img_sizes, total_paths):
-            pred[:, :4] = scale_coords([self.IMAGE_SIZE] * 2, pred[:, :4], size).round()
+            pred[:, :4] = scale_boxes([self.IMAGE_SIZE] * 2, pred[:, :4], size).round()
             results.append(self.results_generation(pred, path, id_strip))
 
         return results
