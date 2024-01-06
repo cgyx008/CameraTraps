@@ -42,7 +42,12 @@ class Detector:
         return detection_model
 
     def get_input_data(self):
-        self.img = cv2.imread(str(self.img_path))
+        try:
+            self.img = cv2.imread(str(self.img_path))
+        except cv2.error as e:
+            self.img = None
+            print(self.img_path)
+            print(e)
         if self.img is None:
             return None
         self.h, self.w = self.img.shape[:2]
@@ -74,7 +79,7 @@ class Detector:
 
     def detect_img_dir(self, img_dir):
         img_paths = sorted(Path(img_dir).glob('**/images/*.jpg'))
-        self.img_paths = img_paths[:-100035]
+        self.img_paths = img_paths
         self.make_xml_dirs()
 
         for img_path in tqdm(self.img_paths):
@@ -165,7 +170,7 @@ class Detector:
 
 def main():
     detector = Detector()
-    detector.detect_img_dir(r'U:\Animal\Private\reolink\user_feedback')
+    detector.detect_img_dir(r'U:\Bird\20240105YoutubeBirdTrain')
     assert 1
 
 
