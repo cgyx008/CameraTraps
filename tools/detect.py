@@ -78,7 +78,7 @@ class Detector:
         return annotated_img
 
     def detect_img_dir(self, img_dir):
-        img_paths = sorted(Path(img_dir).glob('**/images/*.jpg'))
+        img_paths = sorted(Path(img_dir).glob('**/images/*.[jp][pn]g'))
         self.img_paths = img_paths
         self.make_xml_dirs()
 
@@ -88,9 +88,9 @@ class Detector:
             if input_data is None:
                 self.empty_img_paths.append(img_path)
                 continue
-            detections = self.detect_img(input_data)
-            detections['detections'].xyxy = self.scale_boxes(detections['detections'].xyxy)
-            self.save_xml(detections)
+            dets = self.detect_img(input_data)
+            dets['detections'].xyxy = self.scale_boxes(dets['detections'].xyxy)
+            self.save_xml(dets)
 
     def make_xml_dirs(self):
         xml_dirs = {str(p.parent.parent / 'labels_xml') for p in self.img_paths}
@@ -170,7 +170,7 @@ class Detector:
 
 def main():
     detector = Detector()
-    detector.detect_img_dir(r'U:\Bird\20240105YoutubeBirdTrain')
+    detector.detect_img_dir(r'U:\Animal\Public\iNat\Dog\Canis_familiaris')
     assert 1
 
 
